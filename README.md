@@ -22,6 +22,7 @@
 |-----|------|
 | **可插拔架构** | 通过 YAML 配置文件动态管理 AI Agent 工具 |
 | **完整持久化** | 数据、工具包、工作目录、缓存全部持久化存储 |
+| **宿主机共享** | `host-share` 目录实现宿主机与容器间文件共享 |
 | **服务管理** | 内置 Supervisor 管理后台服务进程 |
 | **CLI 工具** | 提供 `agentbox` 命令管理插件的安装、卸载、更新 |
 | **镜像加速** | 支持 NPM/PIP/Go/GitHub 等镜像源配置 |
@@ -81,6 +82,7 @@ agent-box/
 ├── docker-compose.yml          # Docker 编排配置
 ├── Dockerfile                  # 镜像构建文件
 ├── .env.example                # 环境变量模板
+├── .gitignore                  # Git 忽略配置 (包含 host-share)
 ├── config/
 │   └── plugins.yaml            # 插件启用配置
 ├── scripts/
@@ -101,7 +103,9 @@ agent-box/
 │   ├── cursor-cli/             # Cursor CLI
 │   ├── codex/                  # Codex CLI
 │   ├── copaw/                  # CoPaw 网关
-│   └── docker/                 # Docker CLI
+│   ├── docker/                 # Docker CLI
+│   └── hiclaw/                 # HiClaw AI Agent 平台
+├── host-share/                 # 宿主机共享目录 (与容器内 /host-share 映射)
 └── data/                       # 持久化数据目录
     ├── tools/                  # 工具包
     ├── workspace/              # 工作目录
@@ -137,6 +141,47 @@ agent-box/
 | `/home/agent/.config` | 配置文件 |
 | `/home/agent/logs` | 服务日志 |
 | `/home/agent/plugins-data` | 插件隔离数据 |
+| `/host-share` | 宿主机共享目录 (映射到 `/host-share`) |
+
+---
+
+## 宿主机共享目录 (host-share)
+
+`host-share` 目录提供了宿主机与容器之间的文件共享能力，主要用于以下场景：
+
+### 用途
+
+1. **HiClaw 数据共享** - HiClaw Manager 容器通过挂载此目录，实现与 AgentBox 容器的数据交换
+2. **文件传递** - 在宿主机和容器之间传递文件
+3. **配置共享** - 存放需要在多个容器间共享的配置文件
+
+### 目录映射
+
+| 宿主机路径 | 容器内路径 | 用途 |
+|-----------|-----------|------|
+| `./host-share` | `/host-share` | AgentBox 容器共享目录 |
+| `/host-share` | `/host-share` | HiClaw Manager 容器共享目录 |
+
+### 配置说明
+
+- **AgentBox 容器**: 通过 `docker-compose.yml` 中的 volumes 配置自动挂载
+- **HiClaw 容器**: 通过 `plugins/hiclaw/plugin.yaml` 中的 `-v /host-share:/host-share` 挂载
+- **.gitignore**: `host-share` 目录已被加入 `.gitignore`，避免提交用户数据
+
+### 使用示例
+
+```bash
+# 宿主机访问共享目录
+cd host-share
+
+# 容器内访问共享目录
+docker exec -it agentbox bash
+cd /host-share
+
+# HiClaw 中访问共享目录
+docker exec -it hiclaw-manager bash
+cd /host-share
+```
 
 ---
 
@@ -237,6 +282,12 @@ agentbox set-mirror github https://mirror.ghproxy.com/
 | 插件 | 描述 |
 |-----|------|
 | novnc-base | noVNC 基础服务，提供虚拟显示环境 |
+
+### 插件依赖共享目录
+
+| 插件 | 共享目录用途 |
+|-----|-------------|
+| hiclaw | `/host-share` - HiClaw Manager 与宿主机文件交换 |
 
 ---
 

@@ -20,6 +20,8 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock
       # 工作目录（持久化用户数据和日志）
       - ./data:/home/agent/workspace/agent-box/data
+      # 共享目录
+      - ./host-share:/host-share
     extra_hosts:
       - "host.docker.internal:host-gateway"
     ports:

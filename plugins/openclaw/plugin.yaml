@@ -18,6 +18,7 @@ env:
   OPENCLAW_GATEWAY_TOKEN: required
   OPENCLAW_GATEWAY_BIND: export OPENCLAW_GATEWAY_BIND="lan"
   OPENCLAW_SILENT_PAIRING: export OPENCLAW_SILENT_PAIRING="true"
+  OPENCLAW_EXTRA_MOUNTS: export OPENCLAW_EXTRA_MOUNTS="/host-share:/host-share:rw"
   PATH_APPEND: ~/tools/bin
 
 # 需要持久化的目录
