@@ -40,7 +40,6 @@ service:
 # 卸载命令
 uninstall:
   - rm -rf ~/.copaw/venv
-  - rm -rf ~/plugins-data/copaw
 
 # 更新命令
 update:

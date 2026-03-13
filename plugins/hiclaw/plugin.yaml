@@ -122,12 +122,6 @@ uninstall:
   # 停止并移除容器（忽略不存在的情况）
   - bash -c 'docker stop hiclaw-manager 2>/dev/null || true'
   - bash -c 'docker rm hiclaw-manager 2>/dev/null || true'
-  # 删除数据目录（可选，需要用户确认）
-  - bash -c 'if [ -d ~/hiclaw-manager ]; then rm -rf ~/hiclaw-manager; fi'
-  - bash -c 'if [ -d ~/hiclaw-data ]; then rm -rf ~/hiclaw-data; fi'
-  - bash -c 'if [ -f ~/hiclaw-manager.env ]; then rm -f ~/hiclaw-manager.env; fi'
-  # 移除镜像（可选）
-  - bash -c 'docker rmi higress-registry.cn-hangzhou.cr.aliyuncs.com/higress/hiclaw-manager:latest 2>/dev/null || true'
 
 # 更新命令 - 拉取最新镜像并重启容器
 update:

@@ -60,11 +60,6 @@ service:
 
 # 卸载命令
 uninstall:
-  - rm -rf ~/.code-server/lib/code-server-*
-  - rm -f ~/.code-server/bin/code-server
-  - rm -rf ~/.config/code-server
-  - rm -rf ~/.code-server/share/code-server
-  - rm -rf ~/plugins-data/vscode-server
 
 # 更新命令
 update:

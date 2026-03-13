@@ -57,9 +57,6 @@ post_install:
 # 卸载命令
 uninstall:
   - npm uninstall -g openclaw
-  - rm -rf ~/.openclaw
-  - rm -rf ~/plugins-data/openclaw
-  - rm -f $HOME/tools/bin/openclaw
 
 # 更新命令
 update:

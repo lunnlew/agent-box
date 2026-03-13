@@ -50,8 +50,6 @@ service:
 uninstall:
   - pkill -f "Skills-Manager" 2>/dev/null || true
   - rm -rf ~/tools/appimages/Skills-Manager
-  - rm -rf ~/.skills-manager
-  - rm -rf ~/plugins-data/skills-manager
 
 # 更新命令
 update:

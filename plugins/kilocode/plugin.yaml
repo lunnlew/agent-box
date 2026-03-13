@@ -27,8 +27,6 @@ healthcheck:
 # 卸载命令
 uninstall:
   - npm uninstall -g @kilocode/cli
-  - rm -rf ~/.config/kilo
-  - rm -rf ~/plugins-data/kilocode
 
 # 更新命令
 update:

@@ -41,8 +41,6 @@ service:
 # 卸载命令
 uninstall:
   - ~/tools/novnc-scripts/stop-novnc.sh 2>/dev/null || true
-  - rm -rf ~/tools/novnc-scripts
-  - rm -rf ~/plugins-data/novnc-base
 
 # 更新命令
 update:

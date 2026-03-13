@@ -27,8 +27,6 @@ healthcheck:
 # 卸载命令
 uninstall:
   - npm uninstall -g @qwen-code/qwen-code
-  - rm -rf ~/.qwen-code
-  - rm -rf ~/plugins-data/qwen-code
 
 # 更新命令
 update:

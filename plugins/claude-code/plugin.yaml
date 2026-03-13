@@ -35,8 +35,6 @@ healthcheck:
 # 卸载命令
 uninstall:
   - rm -f ~/.local/bin/claude
-  - rm -rf ~/.claude
-  - rm -rf ~/plugins-data/claude-code
 
 # 更新命令
 update:
