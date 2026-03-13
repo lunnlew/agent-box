@@ -1,0 +1,71 @@
+# VS Code Server 插件定义
+name: vscode-server
+version: "1.0.0"
+description: VS Code Server - 通过浏览器访问完整的 VS Code IDE
+
+# 依赖要求
+requires:
+  - curl
+  - bash
+
+# 安装命令
+install:
+  - mkdir -p ~/.code-server/lib ~/.code-server/bin ~/.cache/code-server
+  - bash -c 'if [ -n "$INSTALL_PROXY" ]; then curl -fsSLk --proxy "$INSTALL_PROXY" https://code-server.dev/install.sh | sh -s -- --method standalone; elif [ -n "$HTTPS_PROXY" ]; then curl -fsSLk --proxy "$HTTPS_PROXY" https://code-server.dev/install.sh | sh -s -- --method standalone; else curl -fsSLk https://code-server.dev/install.sh | sh -s -- --method standalone; fi'
+
+# 环境变量配置
+env:
+  VSCODE_PORT: export VSCODE_PORT=${VSCODE_PORT:-8080}
+  VSCODE_PASSWORD: optional
+  STANDALONE_INSTALL_PREFIX: export STANDALONE_INSTALL_PREFIX="$HOME/.code-server"
+  PATH_APPEND: ~/.code-server/bin
+
+# 安装后配置
+post_install:
+  - mkdir -p ~/.config/code-server
+  # 创建 code-server 配置文件
+  - |
+    cat > ~/.config/code-server/config.yaml << EOF
+    bind-addr: 0.0.0.0:${VSCODE_PORT:-8080}
+    auth: password
+    password: agentbox
+    cert: false
+    disable-telemetry: true
+    EOF
+  # 安装中文语言包扩展
+  - code-server --install-extension MS-CEINTL.vscode-language-pack-zh-hans
+  # 设置默认语言为中文
+  - |
+    mkdir -p ~/.local/share/code-server/User
+    cat > ~/.local/share/code-server/User/argv.json << 'EOF'
+    {
+      "locale": "zh-cn"
+    }
+    EOF
+
+# 需要持久化的目录
+# 注意：~/.config 已在 docker-compose.yml 中持久化，无需重复
+volumes:
+  - ~/.code-server: VS Code安装目录
+
+# 健康检查
+healthcheck:
+  command: code-server --version
+
+# 服务配置
+service:
+  auto_start: true
+  # 启动时直接打开主目录作为工作目录
+  command: bash -c 'code-server --bind-addr 0.0.0.0:${VSCODE_PORT:-8080} --auth password --disable-telemetry $HOME'
+
+# 卸载命令
+uninstall:
+  - rm -rf ~/.code-server/lib/code-server-*
+  - rm -f ~/.code-server/bin/code-server
+  - rm -rf ~/.config/code-server
+  - rm -rf ~/.code-server/share/code-server
+  - rm -rf ~/plugins-data/vscode-server
+
+# 更新命令
+update:
+  - bash -c 'if [ -n "$INSTALL_PROXY" ]; then curl -fsSLk --proxy "$INSTALL_PROXY" https://code-server.dev/install.sh | sh -s -- --method standalone; elif [ -n "$HTTPS_PROXY" ]; then curl -fsSLk --proxy "$HTTPS_PROXY" https://code-server.dev/install.sh | sh -s -- --method standalone; else curl -fsSLk https://code-server.dev/install.sh | sh -s -- --method standalone; fi'

@@ -1,0 +1,36 @@
+# OpenCode 插件定义
+name: opencode
+version: "1.0.0"
+description: OpenCode AI - 开源AI编程助手
+
+# 依赖要求
+requires:
+  - nodejs >= 18
+  - npm
+
+# 安装命令
+install:
+  - npm install -g opencode-ai
+
+# 环境变量配置
+env:
+  OPENAI_API_KEY: optional
+  ANTHROPIC_API_KEY: optional
+
+# 需要持久化的目录
+volumes:
+  - ~/.opencode: OpenCode配置和缓存
+
+# 健康检查
+healthcheck:
+  command: opencode --version
+
+# 卸载命令
+uninstall:
+  - npm uninstall -g opencode-ai
+  - rm -rf ~/.opencode
+  - rm -rf ~/plugins-data/opencode
+
+# 更新命令
+update:
+  - npm update -g opencode-ai

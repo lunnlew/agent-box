@@ -1,0 +1,39 @@
+# iFlow AI 插件定义
+name: iflow
+version: "1.0.0"
+description: iFlow AI CLI - AI编程助手
+
+# 依赖要求
+requires:
+  - nodejs >= 18
+  - npm
+
+# 安装命令
+install:
+  - npm install -g @iflow-ai/iflow-cli@latest
+
+# 环境变量配置
+env:
+  IFLOW_API_KEY: optional
+  IFLOW_BASE_URL: optional
+  IFLOW_MODEL_NAME: optional
+  IFLOW_CLI_SYSTEM_SETTINGS_PATH: export IFLOW_CLI_SYSTEM_SETTINGS_PATH="$HOME/tools/iflow-cli/settings.json"
+
+# 需要持久化的目录
+volumes:
+  - ~/.iflow: iFlow用户配置
+  - /etc/iflow-cli/settings.json: iFlow全局配置
+
+# 健康检查
+healthcheck:
+  command: iflow --version
+
+# 卸载命令
+uninstall:
+  - npm uninstall -g @iflow-ai/iflow-cli
+  - rm -rf ~/.iflow
+  - rm -rf ~/plugins-data/iflow
+
+# 更新命令
+update:
+  - npm update -g @iflow-ai/iflow-cli

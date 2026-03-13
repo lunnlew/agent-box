@@ -1,0 +1,35 @@
+# Qwen Code 插件定义
+name: qwen-code
+version: "1.0.0"
+description: Qwen Code CLI - 阿里云通义千问AI编程助手
+
+# 依赖要求
+requires:
+  - nodejs >= 18
+  - npm
+
+# 安装命令
+install:
+  - npm install -g @qwen-code/qwen-code
+
+# 环境变量配置
+env:
+  DASHSCOPE_API_KEY: required
+
+# 需要持久化的目录
+volumes:
+  - ~/.qwen-code: Qwen Code配置和缓存
+
+# 健康检查
+healthcheck:
+  command: qwen --version
+
+# 卸载命令
+uninstall:
+  - npm uninstall -g @qwen-code/qwen-code
+  - rm -rf ~/.qwen-code
+  - rm -rf ~/plugins-data/qwen-code
+
+# 更新命令
+update:
+  - npm update -g @qwen-code/qwen-code

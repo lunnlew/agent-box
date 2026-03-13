@@ -1,0 +1,35 @@
+# Cursor CLI 插件定义
+name: cursor-cli
+version: "1.0.0"
+description: Cursor CLI - AI编程助手命令行工具
+
+# 依赖要求
+requires:
+  - curl
+  - bash
+
+# 安装命令
+install:
+  - bash -c 'if [ -n "$INSTALL_PROXY" ]; then curl -fsSL --proxy "$INSTALL_PROXY" https://cursor.com/install | bash; elif [ -n "$HTTPS_PROXY" ]; then curl -fsSL --proxy "$HTTPS_PROXY" https://cursor.com/install | bash; else curl -fsSL https://cursor.com/install | bash; fi'
+
+# 环境变量配置
+env:
+  OPENAI_API_KEY: optional
+  ANTHROPIC_API_KEY: optional
+
+# 需要持久化的目录
+volumes:
+  - ~/.cursor: Cursor配置和缓存
+
+# 健康检查
+healthcheck:
+  command: agent --version
+
+# 卸载命令
+uninstall:
+  - rm -rf ~/.cursor
+  - rm -rf ~/plugins-data/cursor
+
+# 更新命令
+update:
+  - bash -c 'if [ -n "$INSTALL_PROXY" ]; then curl -fsSL --proxy "$INSTALL_PROXY" https://cursor.com/install | bash; elif [ -n "$HTTPS_PROXY" ]; then curl -fsSL --proxy "$HTTPS_PROXY" https://cursor.com/install | bash; else curl -fsSL https://cursor.com/install | bash; fi'

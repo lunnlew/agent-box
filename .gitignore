@@ -1,0 +1,24 @@
+# 环境变量
+.env
+
+# 持久化数据目录
+data/
+
+# 日志
+*.log
+
+# 系统文件
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# 临时文件
+*.tmp
+*.temp
+
+.claude

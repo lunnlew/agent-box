@@ -1,0 +1,65 @@
+# OpenClaw 插件定义
+name: openclaw
+version: "1.0.0"
+description: OpenClaw - 个人AI助手，支持多渠道消息平台 (WhatsApp, Telegram, Slack, Discord, Signal, iMessage等)
+
+# 依赖要求
+requires:
+  - nodejs >= 22
+  - npm
+
+# 安装命令
+install:
+  - npm install -g openclaw@latest
+
+# 环境变量配置
+env:
+  OPENCLAW_PORT: export OPENCLAW_PORT=${OPENCLAW_PORT:-18789}
+  OPENCLAW_GATEWAY_TOKEN: required
+  OPENCLAW_GATEWAY_BIND: export OPENCLAW_GATEWAY_BIND="lan"
+  OPENCLAW_SILENT_PAIRING: export OPENCLAW_SILENT_PAIRING="true"
+  PATH_APPEND: ~/tools/bin
+
+# 需要持久化的目录
+volumes:
+  - ~/.openclaw: OpenClaw配置和数据
+
+# 服务配置（Gateway守护进程）
+service:
+  auto_start: true
+  command: bash -c 'openclaw gateway --port ${OPENCLAW_PORT:-18789} --bind lan'
+
+# 健康检查
+healthcheck:
+  command: openclaw --version
+
+# 安装后配置
+post_install:
+  - mkdir -p ~/.openclaw/devices
+  - openclaw plugins install @martian-engineering/lossless-claw
+  - |
+    echo ""
+    echo "============================================"
+    echo "  OpenClaw 安装完成!"
+    echo "============================================"
+    echo ""
+    echo "快速开始:"
+    echo "  1. 设置 Token: export OPENCLAW_GATEWAY_TOKEN=your-token"
+    echo "  2. 运行向导配置: openclaw onboard"
+    echo "  3. 启动 Gateway: openclaw gateway --port ${OPENCLAW_PORT:-18789}"
+    echo "  4. 访问 Dashboard: http://localhost:${OPENCLAW_PORT:-18789}"
+    echo ""
+    echo "或直接运行: openclaw dashboard --no-open"
+    echo "============================================"
+    echo ""
+
+# 卸载命令
+uninstall:
+  - npm uninstall -g openclaw
+  - rm -rf ~/.openclaw
+  - rm -rf ~/plugins-data/openclaw
+  - rm -f $HOME/tools/bin/openclaw
+
+# 更新命令
+update:
+  - npm update -g openclaw@latest

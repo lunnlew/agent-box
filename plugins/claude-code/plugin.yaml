@@ -1,0 +1,43 @@
+# Claude Code 插件定义
+name: claude-code
+version: "1.0.0"
+description: Claude Code CLI - Anthropic官方AI编程助手
+
+# 依赖要求
+requires:
+  - curl
+  - bash
+
+# 安装命令
+install:
+  - bash -c 'if [ -n "$INSTALL_PROXY" ]; then curl -fsSL --proxy "$INSTALL_PROXY" https://claude.ai/install.sh | bash; elif [ -n "$HTTPS_PROXY" ]; then curl -fsSL --proxy "$HTTPS_PROXY" https://claude.ai/install.sh | bash; else curl -fsSL https://claude.ai/install.sh | bash; fi'
+
+# 环境变量配置
+env:
+  ANTHROPIC_API_KEY: required
+  PATH_APPEND: ~/.local/bin
+
+# 安装后配置
+post_install:
+  - touch ~/.claude.json && echo '{"hasCompletedOnboarding": true}' > ~/.claude.json
+
+
+# 需要持久化的目录
+volumes:
+  - ~/.claude: Claude Code配置和缓存
+  - ~/.claude.json: Claude Code全局配置
+  - ~/.local: Claude Code安装目录
+
+# 健康检查
+healthcheck:
+  command: claude --version
+
+# 卸载命令
+uninstall:
+  - rm -f ~/.local/bin/claude
+  - rm -rf ~/.claude
+  - rm -rf ~/plugins-data/claude-code
+
+# 更新命令
+update:
+  - bash -c 'if [ -n "$INSTALL_PROXY" ]; then curl -fsSL --proxy "$INSTALL_PROXY" https://claude.ai/install.sh | bash; elif [ -n "$HTTPS_PROXY" ]; then curl -fsSL --proxy "$HTTPS_PROXY" https://claude.ai/install.sh | bash; else curl -fsSL https://claude.ai/install.sh | bash; fi'

@@ -1,0 +1,47 @@
+# CoPaw 插件定义
+name: copaw
+version: "1.0.0"
+description: CoPaw - AgentScope AI编程助手
+
+# 依赖要求
+requires:
+  - curl
+  - bash
+
+# 安装命令
+install:
+  - rm -rf ~/.copaw/venv
+  - bash -c 'if [ -n "$INSTALL_PROXY" ]; then curl -fsSL --proxy "$INSTALL_PROXY" https://copaw.agentscope.io/install.sh | bash; elif [ -n "$HTTPS_PROXY" ]; then curl -fsSL --proxy "$HTTPS_PROXY" https://copaw.agentscope.io/install.sh | bash; else curl -fsSL https://copaw.agentscope.io/install.sh | bash; fi'
+
+# 环境变量配置
+env:
+  COPAW_PORT: export COPAW_PORT=${COPAW_PORT:-8088}
+  PATH_APPEND: ~/.copaw/bin
+
+# 安装后配置
+post_install:
+  - echo "CoPaw安装完成！"
+  - copaw init --defaults --accept-security
+
+# 需要持久化的目录
+volumes:
+  - ~/.copaw: CoPaw配置和缓存
+
+# 健康检查
+healthcheck:
+  command: copaw -h
+
+# 服务配置
+service:
+  auto_start: true
+  # 启动命令
+  command: bash -c 'copaw app --host 0.0.0.0 --port ${COPAW_PORT:-8088}'
+
+# 卸载命令
+uninstall:
+  - rm -rf ~/.copaw/venv
+  - rm -rf ~/plugins-data/copaw
+
+# 更新命令
+update:
+  - bash -c 'if [ -n "$INSTALL_PROXY" ]; then curl -fsSL --proxy "$INSTALL_PROXY" https://copaw.agentscope.io/install.sh | bash; elif [ -n "$HTTPS_PROXY" ]; then curl -fsSL --proxy "$HTTPS_PROXY" https://copaw.agentscope.io/install.sh | bash; else curl -fsSL https://copaw.agentscope.io/install.sh | bash; fi'

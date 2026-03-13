@@ -1,0 +1,578 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AgentBox Dashboard</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --bg-primary: #0f0f23;
+            --bg-secondary: #1a1a2e;
+            --bg-card: #16213e;
+            --text-primary: #eaeaea;
+            --text-secondary: #a0a0a0;
+            --accent-blue: #4fc3f7;
+            --accent-purple: #ab47bc;
+            --accent-green: #66bb6a;
+            --accent-orange: #ffa726;
+            --accent-pink: #f06292;
+            --accent-cyan: #26c6da;
+            --accent-red: #ef5350;
+            --border-color: #2a2a4a;
+        }
+
+        body {
+            font-family: 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+            background: var(--bg-primary);
+            min-height: 100vh;
+            color: var(--text-primary);
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 40px 20px;
+        }
+
+        header {
+            text-align: center;
+            margin-bottom: 50px;
+        }
+
+        .logo {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 15px;
+            margin-bottom: 15px;
+        }
+
+        .logo-icon {
+            width: 60px;
+            height: 60px;
+            background: linear-gradient(135deg, var(--accent-blue), var(--accent-purple));
+            border-radius: 16px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 28px;
+            box-shadow: 0 8px 30px rgba(79, 195, 247, 0.3);
+        }
+
+        h1 {
+            font-size: 2.5rem;
+            background: linear-gradient(135deg, var(--accent-blue), var(--accent-purple));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .subtitle {
+            color: var(--text-secondary);
+            font-size: 1.1rem;
+            margin-top: 10px;
+        }
+
+        .server-info {
+            margin-top: 15px;
+            padding: 10px 20px;
+            background: var(--bg-secondary);
+            border-radius: 8px;
+            display: inline-block;
+            font-size: 0.9rem;
+            color: var(--text-secondary);
+        }
+
+        .server-info code {
+            color: var(--accent-cyan);
+            background: rgba(38, 198, 218, 0.1);
+            padding: 2px 8px;
+            border-radius: 4px;
+        }
+
+        .search-box {
+            max-width: 500px;
+            margin: 30px auto;
+            position: relative;
+        }
+
+        .search-box input {
+            width: 100%;
+            padding: 15px 20px 15px 50px;
+            border: 2px solid var(--border-color);
+            border-radius: 12px;
+            background: var(--bg-secondary);
+            color: var(--text-primary);
+            font-size: 1rem;
+            outline: none;
+            transition: all 0.3s ease;
+        }
+
+        .search-box input:focus {
+            border-color: var(--accent-blue);
+            box-shadow: 0 0 20px rgba(79, 195, 247, 0.2);
+        }
+
+        .search-box::before {
+            content: "🔍";
+            position: absolute;
+            left: 18px;
+            top: 50%;
+            transform: translateY(-50%);
+            font-size: 1.2rem;
+        }
+
+        .refresh-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 10px 20px;
+            background: var(--bg-secondary);
+            border: 2px solid var(--border-color);
+            border-radius: 8px;
+            color: var(--text-primary);
+            cursor: pointer;
+            font-size: 0.9rem;
+            transition: all 0.3s ease;
+        }
+
+        .refresh-btn:hover {
+            border-color: var(--accent-blue);
+            background: rgba(79, 195, 247, 0.1);
+        }
+
+        .refresh-btn.loading {
+            opacity: 0.7;
+            pointer-events: none;
+        }
+
+        .category {
+            margin-bottom: 40px;
+        }
+
+        .category-title {
+            font-size: 1.3rem;
+            color: var(--text-secondary);
+            margin-bottom: 20px;
+            padding-bottom: 10px;
+            border-bottom: 2px solid var(--border-color);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .category-title span {
+            font-size: 1.5rem;
+        }
+
+        .category-subtitle {
+            font-size: 0.9rem;
+            color: var(--text-secondary);
+            margin-left: auto;
+            opacity: 0.7;
+        }
+
+        .cards {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+            gap: 25px;
+        }
+
+        .card {
+            background: var(--bg-card);
+            border-radius: 16px;
+            padding: 25px;
+            border: 2px solid var(--border-color);
+            transition: all 0.3s ease;
+            cursor: pointer;
+            text-decoration: none;
+            color: inherit;
+            display: block;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .card:hover {
+            transform: translateY(-5px);
+            border-color: var(--card-accent);
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3), 0 0 20px var(--card-accent-alpha);
+        }
+
+        .card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 4px;
+            background: var(--card-accent);
+        }
+
+        .card.stopped::before {
+            background: var(--accent-red);
+        }
+
+        .card-icon {
+            width: 60px;
+            height: 60px;
+            border-radius: 14px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 28px;
+            margin-bottom: 15px;
+            background: var(--card-bg);
+        }
+
+        .card-title {
+            font-size: 1.3rem;
+            font-weight: 600;
+            margin-bottom: 8px;
+        }
+
+        .card-desc {
+            color: var(--text-secondary);
+            font-size: 0.95rem;
+            line-height: 1.5;
+            margin-bottom: 15px;
+        }
+
+        .card-meta {
+            display: flex;
+            gap: 15px;
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+            flex-wrap: wrap;
+        }
+
+        .card-meta span {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+
+        .card-url {
+            margin-top: 12px;
+            padding: 8px 12px;
+            background: rgba(0, 0, 0, 0.3);
+            border-radius: 6px;
+            font-family: monospace;
+            font-size: 0.85rem;
+            color: var(--accent-cyan);
+            word-break: break-all;
+        }
+
+        .card-command {
+            margin-top: 12px;
+            padding: 8px 12px;
+            background: rgba(255, 167, 38, 0.15);
+            border-radius: 6px;
+            font-family: monospace;
+            font-size: 0.9rem;
+            color: var(--accent-orange);
+        }
+
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            animation: pulse 2s infinite;
+        }
+
+        .status-dot.running {
+            background: var(--accent-green);
+        }
+
+        .status-dot.stopped {
+            background: var(--accent-red);
+            animation: none;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 4px 10px;
+            border-radius: 20px;
+            font-size: 0.75rem;
+            font-weight: 500;
+            margin-left: 10px;
+        }
+
+        .badge-new {
+            background: linear-gradient(135deg, var(--accent-green), var(--accent-cyan));
+            color: #fff;
+        }
+
+        .badge-popular {
+            background: linear-gradient(135deg, var(--accent-orange), var(--accent-pink));
+            color: #fff;
+        }
+
+        /* Card color themes */
+        .card-blue { --card-accent: var(--accent-blue); --card-accent-alpha: rgba(79, 195, 247, 0.2); --card-bg: rgba(79, 195, 247, 0.15); }
+        .card-purple { --card-accent: var(--accent-purple); --card-accent-alpha: rgba(171, 71, 188, 0.2); --card-bg: rgba(171, 71, 188, 0.15); }
+        .card-green { --card-accent: var(--accent-green); --card-accent-alpha: rgba(102, 187, 106, 0.2); --card-bg: rgba(102, 187, 106, 0.15); }
+        .card-orange { --card-accent: var(--accent-orange); --card-accent-alpha: rgba(255, 167, 38, 0.2); --card-bg: rgba(255, 167, 38, 0.15); }
+        .card-pink { --card-accent: var(--accent-pink); --card-accent-alpha: rgba(240, 98, 146, 0.2); --card-bg: rgba(240, 98, 146, 0.15); }
+        .card-cyan { --card-accent: var(--accent-cyan); --card-accent-alpha: rgba(38, 198, 218, 0.2); --card-bg: rgba(38, 198, 218, 0.15); }
+        .card-red { --card-accent: var(--accent-red); --card-accent-alpha: rgba(239, 83, 80, 0.2); --card-bg: rgba(239, 83, 80, 0.15); }
+
+        footer {
+            text-align: center;
+            margin-top: 60px;
+            padding: 30px;
+            color: var(--text-secondary);
+            border-top: 1px solid var(--border-color);
+        }
+
+        footer a {
+            color: var(--accent-blue);
+            text-decoration: none;
+        }
+
+        .loading-message {
+            text-align: center;
+            padding: 40px;
+            color: var(--text-secondary);
+        }
+
+        .error-message {
+            text-align: center;
+            padding: 40px;
+            color: var(--accent-red);
+        }
+
+        @media (max-width: 768px) {
+            h1 {
+                font-size: 1.8rem;
+            }
+
+            .cards {
+                grid-template-columns: 1fr;
+            }
+
+            .container {
+                padding: 20px 15px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <div class="logo">
+                <div class="logo-icon">📦</div>
+                <h1>AgentBox Dashboard</h1>
+            </div>
+            <p class="subtitle">统一的 AI 开发环境服务入口</p>
+            <div class="server-info">
+                当前服务器: <code id="server-host">检测中...</code>
+                <button class="refresh-btn" onclick="loadServices()" style="margin-left: 15px;">
+                    🔄 刷新状态
+                </button>
+            </div>
+
+            <div class="search-box">
+                <input type="text" id="search" placeholder="搜索服务..." onkeyup="filterCards()">
+            </div>
+        </header>
+
+        <main id="main-content">
+            <div class="loading-message">正在加载服务列表...</div>
+        </main>
+
+        <footer>
+            <p>AgentBox Dashboard v1.1.0 | <a href="https://github.com" target="_blank">GitHub</a></p>
+        </footer>
+    </div>
+
+    <script>
+        // 获取当前主机信息
+        const HOST = window.location.hostname;
+        const PROTOCOL = window.location.protocol;
+
+        // 分类配置
+        const CATEGORIES = {
+            dev: { name: '开发环境', icon: '💻' },
+            ai: { name: 'AI 助手', icon: '🤖' },
+            tools: { name: '工具服务', icon: '🛠️' },
+            cli: { name: 'CLI 工具', icon: '⌨️', subtitle: '终端中使用' }
+        };
+
+        // 更新服务器显示
+        document.getElementById('server-host').textContent = HOST;
+
+        // 加载服务状态
+        async function loadServices() {
+            const mainContent = document.getElementById('main-content');
+            const refreshBtn = document.querySelector('.refresh-btn');
+
+            try {
+                refreshBtn.classList.add('loading');
+                refreshBtn.textContent = '⏳ 加载中...';
+
+                const response = await fetch('/api/services');
+                if (!response.ok) throw new Error('API 请求失败');
+
+                const services = await response.json();
+                renderDashboard(services);
+
+            } catch (error) {
+                console.error('加载服务失败:', error);
+                mainContent.innerHTML = `
+                    <div class="error-message">
+                        <p>⚠️ 无法加载服务状态</p>
+                        <p style="margin-top: 10px; font-size: 0.9rem;">请确保 Dashboard 服务正在运行</p>
+                    </div>
+                `;
+            } finally {
+                refreshBtn.classList.remove('loading');
+                refreshBtn.textContent = '🔄 刷新状态';
+            }
+        }
+
+        // 渲染仪表板
+        function renderDashboard(services) {
+            const mainContent = document.getElementById('main-content');
+            mainContent.innerHTML = '';
+
+            // 按分类分组
+            const grouped = {};
+            Object.entries(services).forEach(([id, service]) => {
+                const category = service.category || 'other';
+                if (!grouped[category]) grouped[category] = [];
+                grouped[category].push({ id, ...service });
+            });
+
+            // 渲染各分类
+            Object.entries(CATEGORIES).forEach(([catId, catConfig]) => {
+                if (!grouped[catId] || grouped[catId].length === 0) return;
+
+                const section = document.createElement('section');
+                section.className = 'category';
+                section.id = `category-${catId}`;
+
+                let titleHtml = `<h2 class="category-title"><span>${catConfig.icon}</span> ${catConfig.name}`;
+                if (catConfig.subtitle) {
+                    titleHtml += `<span class="category-subtitle">${catConfig.subtitle}</span>`;
+                }
+                titleHtml += '</h2>';
+
+                let cardsHtml = '<div class="cards">';
+                grouped[catId].forEach(service => {
+                    cardsHtml += renderCard(service);
+                });
+                cardsHtml += '</div>';
+
+                section.innerHTML = titleHtml + cardsHtml;
+                mainContent.appendChild(section);
+            });
+        }
+
+        // 渲染单个卡片
+        function renderCard(service) {
+            const colorClass = `card-${service.color || 'blue'}`;
+            const hasPort = service.port != null;  // 同时排除 null 和 undefined
+            const isRunning = service.running;
+
+            // 徽章
+            let badgeHtml = '';
+            if (service.badge === 'new') {
+                badgeHtml = '<span class="badge badge-new">新增</span>';
+            } else if (service.badge === 'popular') {
+                badgeHtml = '<span class="badge badge-popular">热门</span>';
+            }
+
+            // 状态
+            const statusText = isRunning ? '运行中' : '已停止';
+            const statusClass = isRunning ? 'running' : 'stopped';
+
+            if (hasPort) {
+                // 有端口的服务：显示 URL 链接
+                const path = service.path || '';
+                const url = `${PROTOCOL}//${HOST}:${service.port}${path}`;
+                const stoppedClass = isRunning ? '' : 'stopped';
+
+                return `
+                    <a href="${url}" class="card ${colorClass} ${stoppedClass}" data-name="${service.id}" target="_blank">
+                        <div class="card-icon">${service.icon}</div>
+                        <h3 class="card-title">${service.name}${badgeHtml}</h3>
+                        <p class="card-desc">${service.desc}</p>
+                        <div class="card-meta">
+                            <span><div class="status-dot ${statusClass}"></div> ${statusText}</span>
+                            <span>端口: ${service.port}</span>
+                        </div>
+                        <div class="card-url">${url}</div>
+                    </a>
+                `;
+            } else {
+                // 无端口的服务（CLI 工具或特殊服务如 Docker）
+                const command = service.command || service.id;
+
+                return `
+                    <div class="card ${colorClass}" data-name="${service.id}" onclick="copyCommand('${command}')">
+                        <div class="card-icon">${service.icon}</div>
+                        <h3 class="card-title">${service.name}${badgeHtml}</h3>
+                        <p class="card-desc">${service.desc}</p>
+                        <!-- 
+                        <div class="card-meta">
+                            <span><div class="status-dot ${statusClass}"></div> ${statusText}</span>
+                        </div>
+                        -->
+                        <div class="card-command">⌨️ ${command}</div>
+                    </div>
+                `;
+            }
+        }
+
+        // 搜索过滤
+        function filterCards() {
+            const search = document.getElementById('search').value.toLowerCase();
+            const cards = document.querySelectorAll('.card');
+
+            cards.forEach(card => {
+                const name = card.getAttribute('data-name') || '';
+                const title = card.querySelector('.card-title')?.textContent.toLowerCase() || '';
+                const desc = card.querySelector('.card-desc')?.textContent.toLowerCase() || '';
+
+                if (name.includes(search) || title.includes(search) || desc.includes(search)) {
+                    card.style.display = 'block';
+                } else {
+                    card.style.display = search ? 'none' : 'block';
+                }
+            });
+
+            // 隐藏空分类
+            document.querySelectorAll('.category').forEach(category => {
+                const hasVisible = Array.from(category.querySelectorAll('.card')).some(card => card.style.display !== 'none');
+                category.style.display = hasVisible ? 'block' : 'none';
+            });
+        }
+
+        // 复制命令
+        function copyCommand(cmd) {
+            navigator.clipboard.writeText(cmd).then(() => {
+                alert('命令已复制: ' + cmd);
+            }).catch(() => {
+                prompt('复制命令:', cmd);
+            });
+        }
+
+        // 页面加载完成后加载服务
+        document.addEventListener('DOMContentLoaded', loadServices);
+
+        // 定时刷新服务状态（每30秒）
+        setInterval(loadServices, 30000);
+    </script>
+</body>
+</html>

@@ -1,0 +1,35 @@
+# OpenAI Codex 插件定义
+name: codex
+version: "0.80.0"
+description: OpenAI Codex CLI - OpenAI官方AI编程助手
+
+# 依赖要求
+requires:
+  - nodejs
+  - npm
+
+# 安装命令
+install:
+  - npm install -g @openai/codex@0.80.0
+
+# 环境变量配置
+env:
+  OPENAI_API_KEY: optional
+
+# 需要持久化的目录
+volumes:
+  - ~/.codex: Codex配置和缓存
+
+# 健康检查
+healthcheck:
+  command: codex --version
+
+# 卸载命令
+uninstall:
+  - npm uninstall -g @openai/codex
+  - rm -rf ~/.codex
+  - rm -rf ~/plugins-data/codex
+
+# 更新命令
+update:
+  - npm update -g @openai/codex

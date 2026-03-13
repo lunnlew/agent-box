@@ -1,0 +1,32 @@
+# Docker CLI 插件定义
+name: docker
+version: "1.0.0"
+description: Docker CLI - 容器管理工具，通过 TCP 连接操作宿主机 Docker
+
+# 依赖要求
+requires:
+  - curl
+  - bash
+
+# 安装命令
+install:
+  - bash -c 'ARCH=$(uname -m); case $ARCH in x86_64) ARCH="x86_64";; aarch64) ARCH="aarch64";; esac; DOCKER_VERSION="28.0.1"; URL="https://download.docker.com/linux/static/stable/${ARCH}/docker-${DOCKER_VERSION}.tgz"; if [ -n "$INSTALL_PROXY" ]; then curl -fsSL --proxy "$INSTALL_PROXY" -o /tmp/docker.tgz "$URL"; elif [ -n "$HTTPS_PROXY" ]; then curl -fsSL --proxy "$HTTPS_PROXY" -o /tmp/docker.tgz "$URL"; else curl -fsSL -o /tmp/docker.tgz "$URL"; fi && tar -xzf /tmp/docker.tgz -C /tmp && mv /tmp/docker/docker $HOME/tools/bin/ && rm -rf /tmp/docker /tmp/docker.tgz'
+
+# 环境变量配置
+env:
+
+# 需要持久化的目录
+volumes: []
+
+# 健康检查
+healthcheck:
+  command: docker --version
+
+# 卸载命令
+uninstall:
+  - rm -f $HOME/tools/bin/docker
+  - rm -rf ~/plugins-data/docker
+
+# 更新命令
+update:
+  - bash -c 'ARCH=$(uname -m); case $ARCH in x86_64) ARCH="x86_64";; aarch64) ARCH="aarch64";; esac; DOCKER_VERSION="28.0.1"; URL="https://download.docker.com/linux/static/stable/${ARCH}/docker-${DOCKER_VERSION}.tgz"; if [ -n "$INSTALL_PROXY" ]; then curl -fsSL --proxy "$INSTALL_PROXY" -o /tmp/docker.tgz "$URL"; elif [ -n "$HTTPS_PROXY" ]; then curl -fsSL --proxy "$HTTPS_PROXY" -o /tmp/docker.tgz "$URL"; else curl -fsSL -o /tmp/docker.tgz "$URL"; fi && tar -xzf /tmp/docker.tgz -C /tmp && mv /tmp/docker/docker $HOME/tools/bin/ && rm -rf /tmp/docker /tmp/docker.tgz'

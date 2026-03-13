@@ -1,0 +1,55 @@
+version: '3.8'
+
+services:
+  agentbox:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: agentbox
+    hostname: agentbox
+    env_file:
+      - .env
+    volumes:
+      # 主数据目录
+      - ./data:/home/agent
+      # 插件配置文件
+      - ./config/plugins.yaml:/home/agent/config/plugins.yaml:ro
+      # 插件定义目录
+      - ./plugins:/home/agent/plugins-config:ro
+      # Docker socket (容器内可直接使用 Docker)
+      - /var/run/docker.sock:/var/run/docker.sock
+      # 工作目录（持久化用户数据和日志）
+      - ./data:/home/agent/workspace/agent-box/data
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      # AgentBox Dashboard
+      - "${BOARD_PORT:-8888}:8888"
+      # VS Code Server (容器内8080)
+      - "${VSCODE_PORT:-8080}:8080"
+      # Web Terminal (容器内7681)
+      - "${WEB_TERMINAL_PORT:-7681}:7681"
+      # OpenClaw Gateway (容器内18789)
+      - "${OPENCLAW_PORT:-18789}:18789"
+      # CoPaw Gateway (容器内8088)
+      - "${COPAW_PORT:-8088}:8088"
+      # noVNC / Skills Manager (容器内6080)
+      - "${NOVNC_PORT:-6080}:6080"
+    # Docker socket 权限
+    group_add:
+      - "999"
+    # 保持容器持续运行
+    tty: true
+    stdin_open: true
+    # deploy:
+    #   resources:
+    #     limits:
+    #       cpus: '8'
+    #       memory: 16G
+    networks:
+      - agent-network
+    restart: unless-stopped
+
+networks:
+  agent-network:
+    driver: bridge

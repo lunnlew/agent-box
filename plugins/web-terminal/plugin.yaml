@@ -1,0 +1,44 @@
+# Web Terminal 插件定义
+name: web-terminal
+version: "1.0.0"
+description: Web终端服务 - 通过浏览器访问容器终端
+
+# 依赖要求
+requires:
+  - curl
+  - bash
+
+# 安装命令
+install:
+  - mkdir -p $HOME/tools/bin
+  - bash -c 'ARCH=$(uname -m); case $ARCH in x86_64) ARCH="x86_64";; aarch64) ARCH="aarch64";; esac; TTYD_VERSION="1.7.7"; URL="https://github.com/tsl0922/ttyd/releases/download/${TTYD_VERSION}/ttyd.${ARCH}"; if [ -n "$INSTALL_PROXY" ]; then curl -fsSL --proxy "$INSTALL_PROXY" -o /tmp/ttyd "$URL"; elif [ -n "$HTTPS_PROXY" ]; then curl -fsSL --proxy "$HTTPS_PROXY" -o /tmp/ttyd "$URL"; else curl -fsSL -o /tmp/ttyd "$URL"; fi && chmod +x /tmp/ttyd && mv /tmp/ttyd $HOME/tools/bin/ttyd'
+
+# 环境变量配置
+env:
+  WEB_TERMINAL_PORT: export WEB_TERMINAL_PORT=${WEB_TERMINAL_PORT:-7681}
+  WEB_TERMINAL_CREDENTIAL: optional
+  PATH_APPEND: ~/tools/bin
+
+# 安装后配置
+post_install: []
+
+# 需要持久化的目录
+volumes: []
+
+# 健康检查
+healthcheck:
+  command: ttyd --version
+
+# 服务配置
+service:
+  auto_start: true
+  # 启动 Web Terminal 服务
+  command: bash -c 'ttyd --port ${WEB_TERMINAL_PORT:-7681} --writable --reconnect bash'
+
+# 卸载命令
+uninstall:
+  - rm -f $HOME/tools/bin/ttyd
+
+# 更新命令
+update:
+  - bash -c 'ARCH=$(uname -m); case $ARCH in x86_64) ARCH="x86_64";; aarch64) ARCH="aarch64";; esac; TTYD_VERSION="1.7.7"; URL="https://github.com/tsl0922/ttyd/releases/download/${TTYD_VERSION}/ttyd.${ARCH}"; if [ -n "$INSTALL_PROXY" ]; then curl -fsSL --proxy "$INSTALL_PROXY" -o /tmp/ttyd "$URL"; elif [ -n "$HTTPS_PROXY" ]; then curl -fsSL --proxy "$HTTPS_PROXY" -o /tmp/ttyd "$URL"; else curl -fsSL -o /tmp/ttyd "$URL"; fi && chmod +x /tmp/ttyd && mv /tmp/ttyd $HOME/tools/bin/ttyd'

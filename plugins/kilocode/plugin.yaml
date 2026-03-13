@@ -1,0 +1,35 @@
+# Kilocode CLI 插件定义
+name: kilocode
+version: "1.0.0"
+description: Kilocode CLI - AI编程助手命令行工具
+
+# 依赖要求
+requires:
+  - nodejs >= 18
+  - npm
+
+# 安装命令
+install:
+  - npm install -g @kilocode/cli
+
+# 环境变量配置
+env:
+  KILOCODE_API_KEY: optional
+
+# 需要持久化的目录
+volumes:
+  - ~/.config/kilo: Kilocode配置和缓存
+
+# 健康检查
+healthcheck:
+  command: kilocode --version
+
+# 卸载命令
+uninstall:
+  - npm uninstall -g @kilocode/cli
+  - rm -rf ~/.config/kilo
+  - rm -rf ~/plugins-data/kilocode
+
+# 更新命令
+update:
+  - npm update -g @kilocode/cli

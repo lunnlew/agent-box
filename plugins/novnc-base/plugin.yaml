@@ -1,0 +1,51 @@
+# noVNC 基础服务插件
+# 提供虚拟显示和 VNC/Web 访问能力，供其他 GUI 应用复用
+name: novnc-base
+version: "1.0.0"
+description: noVNC基础服务 - 提供虚拟X显示和浏览器VNC访问能力
+
+# 依赖要求
+requires:
+  - bash
+
+# 安装命令 (仅创建配置和脚本)
+install:
+  - mkdir -p ~/tools/novnc-scripts ~/logs
+
+# 安装后配置
+post_install:
+  - mkdir -p /tmp/.X11-unix && chmod 1777 /tmp/.X11-unix 2>/dev/null || true
+  - cp /home/agent/plugins-config/novnc-base/start-novnc.sh ~/tools/novnc-scripts/
+  - cp /home/agent/plugins-config/novnc-base/stop-novnc.sh ~/tools/novnc-scripts/
+  - chmod +x ~/tools/novnc-scripts/*.sh
+
+# 环境变量
+env:
+  DISPLAY: export DISPLAY=:99
+  NOVNC_PORT: export NOVNC_PORT=${NOVNC_PORT:-6080}
+  WEBKIT_DISABLE_COMPOSITING_MODE: export WEBKIT_DISABLE_COMPOSITING_MODE=1
+
+# 需要持久化的目录
+volumes:
+  - ~/tools/novnc-scripts: noVNC脚本目录
+
+# 健康检查
+healthcheck:
+  command: test -f ~/tools/novnc-scripts/start-novnc.sh
+
+# 服务配置
+service:
+  auto_start: true
+  command: /home/agent/tools/novnc-scripts/start-novnc.sh
+
+# 卸载命令
+uninstall:
+  - ~/tools/novnc-scripts/stop-novnc.sh 2>/dev/null || true
+  - rm -rf ~/tools/novnc-scripts
+  - rm -rf ~/plugins-data/novnc-base
+
+# 更新命令
+update:
+  - cp /home/agent/plugins-config/novnc-base/start-novnc.sh ~/tools/novnc-scripts/
+  - cp /home/agent/plugins-config/novnc-base/stop-novnc.sh ~/tools/novnc-scripts/
+  - chmod +x ~/tools/novnc-scripts/*.sh

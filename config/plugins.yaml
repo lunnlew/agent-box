@@ -1,0 +1,70 @@
+# AgentBox 插件配置文件
+# 定义需要启用的插件列表
+# 详细配置请参考 plugins/*/plugin.yaml
+
+plugins:
+  # Claude Code CLI - Anthropic官方AI编程助手
+  - name: claude-code
+    enabled: true
+
+  # Qwen Code CLI - 阿里云通义千问AI编程助手
+  - name: qwen-code
+    enabled: true
+
+  # OpenCode AI - 开源AI编程助手
+  - name: opencode
+    enabled: true
+
+  # iFlow AI CLI - AI编程助手
+  - name: iflow
+    enabled: true
+
+  # OpenClaw - 个人AI助手，支持多渠道消息平台
+  - name: openclaw
+    enabled: true
+
+  # VS Code Server - 浏览器中的VS Code IDE
+  - name: vscode-server
+    enabled: true
+
+  # Web Terminal - 浏览器终端服务
+  - name: web-terminal
+    enabled: true
+
+  # Kilocode CLI - AI编程助手命令行工具
+  - name: kilocode
+    enabled: true
+
+  # CoPaw - AgentScope AI编程助手
+  - name: copaw
+    enabled: true
+
+  # OpenAI Codex CLI - OpenAI官方AI编程助手
+  - name: codex
+    enabled: true
+
+  # noVNC 基础服务 - 提供虚拟显示和浏览器VNC访问
+  # 作为基础服务，供其他 GUI 应用（如 skills-manager）复用
+  - name: novnc-base
+    enabled: true
+
+  # Skills Manager - AI编程助手技能管理工具（浏览器访问）
+  # 依赖 novnc-base 提供的虚拟显示环境
+  - name: skills-manager
+    enabled: true
+
+  # AgentBox Dashboard - 统一服务入口面板
+  - name: board
+    enabled: true
+
+  # Cursor CLI - AI编程助手命令行工具
+  - name: cursor-cli
+    enabled: true
+
+  # Docker CLI - 容器管理工具
+  - name: docker
+    enabled: true
+
+  # HiClaw - AI Agent平台，集成Higress网关和Matrix消息平台
+  - name: hiclaw
+    enabled: true 

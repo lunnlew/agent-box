@@ -1,0 +1,42 @@
+# AgentBox Dashboard 插件定义
+# 提供统一的服务入口面板，显示所有可浏览器访问的服务
+name: board
+version: "1.0.0"
+description: AgentBox Dashboard - 统一服务入口面板，显示所有可浏览器访问的服务
+
+# 依赖要求
+requires:
+  - python3
+
+# 安装命令
+install:
+  - mkdir -p ~/logs
+
+# 安装后配置
+post_install:
+  - chmod +x ~/plugins-config/board/start-board.sh
+
+# 环境变量
+env:
+  BOARD_PORT: export BOARD_PORT=${BOARD_PORT:-8888}
+
+# 需要持久化的目录
+volumes:
+
+# 健康检查
+healthcheck:
+  command: test -f ~/plugins-config/board/index.html
+
+# 服务配置
+service:
+  auto_start: true
+  command: /home/agent/plugins-config/board/start-board.sh
+
+# 卸载命令
+uninstall:
+  - pkill -f "board-server" 2>/dev/null || true
+  - rm -rf ~/plugins-data/board
+
+# 更新命令
+update:
+  - chmod +x ~/plugins-config/board/start-board.sh

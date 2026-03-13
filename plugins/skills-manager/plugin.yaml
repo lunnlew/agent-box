@@ -1,0 +1,65 @@
+# Skills Manager 插件定义
+# 依赖 novnc-base 基础服务，复用虚拟显示环境
+name: skills-manager
+version: "1.1.5"
+description: Skills Manager - AI编程助手技能管理工具（通过浏览器访问）
+
+# 依赖要求
+requires:
+  - curl
+  - bash
+
+# 插件依赖（会自动安装和启动）
+depends:
+  - novnc-base
+
+# 安装命令
+install:
+  - mkdir -p ~/tools/appimages/Skills-Manager
+  - curl -fsSL -o ~/tools/appimages/Skills-Manager/Skills-Manager.AppImage https://github.com/jiweiyeah/Skills-Manager/releases/download/v1.1.5/Skills.Manager_1.1.5_amd64.AppImage
+  - chmod +x ~/tools/appimages/Skills-Manager/Skills-Manager.AppImage
+  # 提取 AppImage（Docker 容器没有 FUSE 支持）
+  - cd ~/tools/appimages/Skills-Manager && ./Skills-Manager.AppImage --appimage-extract 2>/dev/null || true
+
+# 安装后配置
+post_install:
+  - mkdir -p ~/.skills-manager ~/logs
+  - cp /home/agent/plugins-config/skills-manager/start-skills-manager.sh ~/tools/appimages/Skills-Manager/
+  - chmod +x ~/tools/appimages/Skills-Manager/start-skills-manager.sh
+
+# 需要持久化的目录
+volumes:
+  - ~/.skills-manager: Skills Manager配置和数据
+  - ~/tools/appimages/Skills-Manager: AppImage安装目录
+
+# 健康检查
+healthcheck:
+  command: test -f ~/tools/appimages/Skills-Manager/squashfs-root/AppRun
+
+# 服务配置
+# 注意：此插件依赖 novnc-base 提供的虚拟显示环境
+# 启动顺序由 plugin-manager.sh 根据 depends 自动处理
+service:
+  auto_start: true
+  command: /home/agent/tools/appimages/Skills-Manager/start-skills-manager.sh
+  # 应用崩溃后重启
+  restart: true
+  max_restarts: 5
+
+# 卸载命令
+uninstall:
+  - pkill -f "Skills-Manager" 2>/dev/null || true
+  - rm -rf ~/tools/appimages/Skills-Manager
+  - rm -rf ~/.skills-manager
+  - rm -rf ~/plugins-data/skills-manager
+
+# 更新命令
+update:
+  - pkill -f "Skills-Manager" 2>/dev/null || true
+  - rm -rf ~/tools/appimages/Skills-Manager
+  - mkdir -p ~/tools/appimages/Skills-Manager
+  - curl -fsSL -o ~/tools/appimages/Skills-Manager/Skills-Manager.AppImage https://github.com/jiweiyeah/Skills-Manager/releases/download/v1.1.5/Skills.Manager_1.1.5_amd64.AppImage
+  - chmod +x ~/tools/appimages/Skills-Manager/Skills-Manager.AppImage
+  - cd ~/tools/appimages/Skills-Manager && ./Skills-Manager.AppImage --appimage-extract 2>/dev/null || true
+  - cp /home/agent/plugins-config/skills-manager/start-skills-manager.sh ~/tools/appimages/Skills-Manager/
+  - chmod +x ~/tools/appimages/Skills-Manager/start-skills-manager.sh
