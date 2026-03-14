@@ -10,12 +10,81 @@ requires:
 
 # 安装命令
 install:
-  - npm install -g openclaw@latest
+  - |
+    set -e
+
+    # 获取 npm 全局安装路径
+    NPM_ROOT=$(npm root -g 2>/dev/null)
+    NPM_BIN=$(npm bin -g 2>/dev/null)
+    OPENCLAW_PATH="$NPM_ROOT/openclaw"
+    OPENCLAW_BIN="$NPM_BIN/openclaw"
+
+    log_info "NPM root: $NPM_ROOT"
+    log_info "NPM bin: $NPM_BIN"
+
+    # 清理残留的临时目录（npm 安装中断会留下 .openclaw-* 目录）
+    log_info "Cleaning up temp directories..."
+    for tmp_dir in "$NPM_ROOT"/.openclaw-*; do
+      if [ -d "$tmp_dir" ]; then
+        rm -rf "$tmp_dir" 2>/dev/null || true
+        log_info "  Removed temp dir: $tmp_dir"
+      fi
+    done
+
+    # 卸载旧版本
+    log_info "Uninstalling existing openclaw..."
+    npm uninstall -g openclaw 2>/dev/null || true
+
+    # 清理残留目录
+    if [ -d "$OPENCLAW_PATH" ]; then
+      rm -rf "$OPENCLAW_PATH" 2>/dev/null || true
+      log_info "  Removed existing: $OPENCLAW_PATH"
+    fi
+    if [ -L "$OPENCLAW_BIN" ]; then
+      rm -f "$OPENCLAW_BIN" 2>/dev/null || true
+      log_info "  Removed symlink: $OPENCLAW_BIN"
+    fi
+
+    # 全局安装
+    log_info "Installing openclaw@latest..."
+    if ! npm install -g openclaw@latest; then
+      log_error "npm install failed, retrying..."
+      sleep 2
+      npm install -g openclaw@latest
+    fi
+
+    # 验证安装完整性
+    log_info "Verifying installation..."
+
+    # 检查 package.json 是否存在
+    if [ ! -f "$OPENCLAW_PATH/package.json" ]; then
+      log_error "package.json not found, installation incomplete!"
+      exit 1
+    fi
+
+    # 检查主执行文件是否存在
+    if [ ! -f "$OPENCLAW_PATH/openclaw.mjs" ]; then
+      log_error "openclaw.mjs not found, installation incomplete!"
+      exit 1
+    fi
+
+    # 检查符号链接是否存在
+    if [ ! -L "$OPENCLAW_BIN" ] && [ ! -f "$OPENCLAW_BIN" ]; then
+      log_error "Binary symlink not found, installation incomplete!"
+      exit 1
+    fi
+
+    # 清理可能的临时目录（如果安装后还有残留）
+    for tmp_dir in "$NPM_ROOT"/.openclaw-*; do
+      [ -d "$tmp_dir" ] && rm -rf "$tmp_dir" 2>/dev/null || true
+    done
+
+    log_success "openclaw installed successfully"
 
 # 环境变量配置
 env:
   OPENCLAW_PORT: export OPENCLAW_PORT=${OPENCLAW_PORT:-18789}
-  OPENCLAW_GATEWAY_TOKEN: required
+  OPENCLAW_GATEWAY_TOKEN: optional
   OPENCLAW_GATEWAY_BIND: export OPENCLAW_GATEWAY_BIND="lan"
   OPENCLAW_SILENT_PAIRING: export OPENCLAW_SILENT_PAIRING="true"
   OPENCLAW_EXTRA_MOUNTS: export OPENCLAW_EXTRA_MOUNTS="/host-share:/host-share:rw"
@@ -36,9 +105,13 @@ healthcheck:
 
 # 安装后配置
 post_install:
-  - mkdir -p ~/.openclaw/devices
-  - openclaw plugins install @martian-engineering/lossless-claw
   - |
+    set -e
+    mkdir -p ~/.openclaw/devices
+    rm -rf ~/.openclaw/extensions/lossless-claw 2>/dev/null || true
+    if command -v openclaw &> /dev/null; then
+      openclaw plugins install @martian-engineering/lossless-claw || true
+    fi
     echo ""
     echo "============================================"
     echo "  OpenClaw 安装完成!"

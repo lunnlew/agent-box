@@ -294,7 +294,14 @@ process_plugin_env() {
         case "$var_name" in
             PATH_APPEND)
                 # PATH_APPEND: 简洁格式，添加路径到 PATH 和 .bashrc
-                [ "$action" = "setup" ] || [ "$action" = "all" ] && _add_to_path "$var_value"
+                if [ "$action" = "setup" ] || [ "$action" = "all" ]; then
+                    # 支持命令替换 $(...) 和变量替换 ${...}
+                    local expanded_path="$var_value"
+                    if [[ "$var_value" == *'$('* ]] || [[ "$var_value" == *'${'* ]]; then
+                        expanded_path=$(eval echo "$var_value" 2>/dev/null) || expanded_path="$var_value"
+                    fi
+                    _add_to_path "$expanded_path"
+                fi
                 ;;
             PATH)
                 # 旧格式兼容：export PATH="..."

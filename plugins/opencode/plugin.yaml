@@ -10,7 +10,16 @@ requires:
 
 # 安装命令
 install:
-  - npm install -g opencode-ai
+  - |
+    # 先尝试正常卸载
+    npm uninstall -g opencode-ai 2>/dev/null || true
+    # 清理可能残留的目录（处理 ENOTEMPTY 错误）
+    OPENCODE_PATH=$(npm root -g 2>/dev/null)/opencode-ai
+    if [ -d "$OPENCODE_PATH" ]; then
+      rm -rf "$OPENCODE_PATH" 2>/dev/null || true
+    fi
+    # 全局安装
+    npm install -g opencode-ai
 
 # 环境变量配置
 env:

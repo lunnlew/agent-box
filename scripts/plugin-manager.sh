@@ -281,37 +281,109 @@ execute_install_commands() {
         return 0
     fi
 
-    while IFS= read -r cmd; do
-        if [ -n "$cmd" ] && [[ ! "$cmd" =~ ^[|\-]$ ]]; then
-            log_info "Executing: $cmd"
+    local current_cmd=""
+    local in_multiline=false
 
-            local output
-            local exit_code
-            output=$(eval "$cmd" 2>&1) && exit_code=0 || exit_code=$?
-
-            if [ $exit_code -ne 0 ]; then
-                if echo "$output" | grep -q "ENOTEMPTY"; then
-                    log_warning "Detected npm ENOTEMPTY error, attempting cleanup and retry..."
-
-                    if [[ "$cmd" =~ npm\ install\ -g\ ([^[:space:]]+) ]]; then
-                        local pkg_name="${BASH_REMATCH[1]}"
-                        log_info "Cleaning up existing npm package: $pkg_name"
-                        npm uninstall -g "$pkg_name" 2>/dev/null || true
-                        rm -rf "$HOME/tools/lib/node_modules/$pkg_name" 2>/dev/null || true
-
-                        log_info "Retrying: $cmd"
-                        eval "$cmd"
-                    else
-                        log_error "Install command failed: $output"
-                        return 1
-                    fi
-                else
-                    log_error "Install command failed: $output"
-                    return 1
-                fi
+    while IFS= read -r line; do
+        # 检查是否是新的列表项（以 - 开头）
+        if [[ "$line" =~ ^-[[:space:]] ]]; then
+            # 如果之前有累积的命令，执行它
+            if [ -n "$current_cmd" ]; then
+                execute_single_command "$current_cmd" "$plugin_name" "$plugin_file" || return 1
+            fi
+            # 开始新的命令
+            local item_content=$(echo "$line" | sed 's/^[[:space:]]*-[[:space:]]*//')
+            if [[ "$item_content" == "|" ]] || [[ "$item_content" == "|-" ]] || [[ "$item_content" == "|+" ]]; then
+                in_multiline=true
+                current_cmd=""
+            else
+                in_multiline=false
+                current_cmd="$item_content"
+            fi
+        elif [ "$in_multiline" = true ] || [ -n "$current_cmd" ]; then
+            # 多行块内容或续行
+            if [ -z "$current_cmd" ]; then
+                current_cmd="$line"
+            else
+                current_cmd="${current_cmd}"$'\n'"$line"
             fi
         fi
     done <<< "$commands"
+
+    # 执行最后一个命令
+    if [ -n "$current_cmd" ]; then
+        execute_single_command "$current_cmd" "$plugin_name" "$plugin_file" || return 1
+    fi
+
+    return 0
+}
+
+# 执行单个命令（带错误处理和重试）
+execute_single_command() {
+    local cmd="$1"
+    local plugin_name="$2"
+    local plugin_file="$3"
+
+    log_info "Executing: $(echo "$cmd" | head -1)"
+
+    local output
+    local exit_code
+    output=$(eval "$cmd" 2>&1) && exit_code=0 || exit_code=$?
+
+    if [ $exit_code -ne 0 ]; then
+        if echo "$output" | grep -q "ENOTEMPTY"; then
+            log_warning "Detected npm ENOTEMPTY error, attempting cleanup and retry..."
+
+            if [[ "$cmd" =~ npm\ install\ -g\ ([^[:space:]]+) ]]; then
+                local pkg_name="${BASH_REMATCH[1]}"
+                log_info "Cleaning up existing npm package: $pkg_name"
+                npm uninstall -g "$pkg_name" 2>/dev/null || true
+                rm -rf "$HOME/tools/lib/node_modules/$pkg_name" 2>/dev/null || true
+
+                log_info "Retrying: $cmd"
+                eval "$cmd" || {
+                    log_error "Install command failed after retry: $(eval "$cmd" 2>&1)"
+                    return 1
+                }
+            else
+                log_error "Install command failed: $output"
+                return 1
+            fi
+        else
+            log_error "Install command failed: $output"
+            return 1
+        fi
+    else
+        # npm install 成功后的额外验证（处理安装不完整的情况）
+        if [[ "$cmd" =~ npm\ install\ -g\ ([^[:space:]]+) ]]; then
+            local pkg_name="${BASH_REMATCH[1]}"
+            local npm_root=$(npm root -g 2>/dev/null)
+            local pkg_path="$npm_root/$pkg_name"
+
+            log_info "Verifying npm package installation: $pkg_name"
+
+            # 检查 package.json 是否存在
+            if [ ! -f "$pkg_path/package.json" ]; then
+                log_error "Package $pkg_name installation incomplete: package.json missing"
+                log_info "Cleaning up incomplete installation..."
+
+                # 清理临时目录（npm 安装中断会留下 .openclaw-* 目录）
+                for tmp_dir in "$npm_root"/.${pkg_name}-*; do
+                    [ -d "$tmp_dir" ] && rm -rf "$tmp_dir" 2>/dev/null || true
+                done
+
+                rm -rf "$pkg_path" 2>/dev/null || true
+                rm -f "$HOME/tools/bin/$pkg_name" 2>/dev/null || true
+
+                # 重试安装
+                log_info "Retrying installation..."
+                eval "$cmd" || {
+                    log_error "Retry installation failed: $pkg_name"
+                    return 1
+                }
+            fi
+        fi
+    fi
 
     return 0
 }
@@ -413,19 +485,73 @@ install_plugin() {
 
     setup_plugin_volumes "$plugin_name" "$plugin_file"
 
-    local post_install=$(get_yaml_list_commands "$plugin_file" "post_install")
-    if [ -n "$post_install" ]; then
-        log_info "Running post-install commands..."
-        while IFS= read -r cmd; do
-            if [ -n "$cmd" ] && [[ ! "$cmd" =~ ^[[:space:]]*# ]]; then
-                log_info "  $(echo "$cmd" | head -1)"
-                eval "$cmd"
-            fi
-        done <<< "$post_install"
-    fi
+    execute_post_install_commands "$plugin_file" "$plugin_name"
 
     mark_plugin_installed "$plugin_name"
     log_success "Plugin installed: $plugin_name"
+}
+
+# 执行 post_install 命令
+execute_post_install_commands() {
+    local plugin_file="$1"
+    local plugin_name="$2"
+
+    local commands=$(get_yaml_list_commands "$plugin_file" "post_install")
+
+    if [ -z "$commands" ]; then
+        return 0
+    fi
+
+    log_info "Running post-install commands..."
+
+    local current_cmd=""
+    local in_multiline=false
+
+    while IFS= read -r line; do
+        # 检查是否是新的列表项（以 - 开头）
+        if [[ "$line" =~ ^-[[:space:]] ]]; then
+            # 如果之前有累积的命令，执行它
+            if [ -n "$current_cmd" ]; then
+                execute_post_install_single_command "$current_cmd"
+            fi
+            # 开始新的命令
+            local item_content=$(echo "$line" | sed 's/^[[:space:]]*-[[:space:]]*//')
+            if [[ "$item_content" == "|" ]] || [[ "$item_content" == "|-" ]] || [[ "$item_content" == "|+" ]]; then
+                in_multiline=true
+                current_cmd=""
+            else
+                in_multiline=false
+                current_cmd="$item_content"
+            fi
+        elif [ "$in_multiline" = true ] || [ -n "$current_cmd" ]; then
+            # 多行块内容或续行
+            if [ -z "$current_cmd" ]; then
+                current_cmd="$line"
+            else
+                current_cmd="${current_cmd}"$'\n'"$line"
+            fi
+        fi
+    done <<< "$commands"
+
+    # 执行最后一个命令
+    if [ -n "$current_cmd" ]; then
+        execute_post_install_single_command "$current_cmd"
+    fi
+
+    return 0
+}
+
+# 执行单个 post_install 命令
+execute_post_install_single_command() {
+    local cmd="$1"
+
+    # 跳过注释
+    if [[ "$cmd" =~ ^[[:space:]]*# ]]; then
+        return 0
+    fi
+
+    log_info "  $(echo "$cmd" | head -1)"
+    eval "$cmd"
 }
 
 # 卸载插件

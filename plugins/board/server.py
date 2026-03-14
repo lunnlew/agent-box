@@ -116,7 +116,8 @@ SERVICES = {
         'path': '#token=' + OPENCLAW_TOKEN if OPENCLAW_TOKEN else '',
         'color': 'purple',
         'badge': 'popular',
-        'category': 'ai'
+        'category': 'ai',
+        'check_host': '127.0.0.1'
     },
     'copaw': {
         'internal_port': 8088,
@@ -128,7 +129,7 @@ SERVICES = {
         'color': 'pink',
         'badge': 'new',
         'category': 'ai',
-        'check_host': 'host.docker.internal'
+        'check_host': '127.0.0.1'
     },
     'skills-manager': {
         'internal_port': 6080,

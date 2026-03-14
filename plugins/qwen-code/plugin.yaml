@@ -10,7 +10,16 @@ requires:
 
 # 安装命令
 install:
-  - npm install -g @qwen-code/qwen-code
+  - |
+    # 先尝试正常卸载
+    npm uninstall -g @qwen-code/qwen-code 2>/dev/null || true
+    # 清理可能残留的目录（处理 ENOTEMPTY 错误）
+    QWEN_CODE_PATH=$(npm root -g 2>/dev/null)/@qwen-code/qwen-code
+    if [ -d "$QWEN_CODE_PATH" ]; then
+      rm -rf "$QWEN_CODE_PATH" 2>/dev/null || true
+    fi
+    # 全局安装
+    npm install -g @qwen-code/qwen-code
 
 # 环境变量配置
 env:
