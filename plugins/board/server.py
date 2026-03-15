@@ -153,6 +153,17 @@ SERVICES = {
         'category': 'tools',
         'check_host': '127.0.0.1'
     },
+    'openclaw-manager': {
+        'internal_port': 6081,
+        'external_port': int(os.environ.get('OPENCLAW_MANAGER_NOVNC_PORT', 6081)),
+        'name': 'OpenClaw Manager',
+        'icon': '🎮',
+        'desc': 'OpenClaw AI Agent 桌面管理工具（通过 noVNC 浏览器访问）',
+        'path': '/vnc.html?autoconnect=true&reconnect=true&resize=scale',
+        'color': 'blue',
+        'category': 'ai',
+        'check_host': '127.0.0.1'
+    },
     # 'superset': {
     #     'internal_port': 6081,
     #     'external_port': int(os.environ.get('SUPERSET_NOVNC_PORT', 6081)),

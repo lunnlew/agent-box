@@ -59,6 +59,10 @@ plugins:
   - name: skills-manager
     enabled: true
 
+  # OpenClaw Manager - OpenClaw AI Agent 桌面管理工具（通过浏览器访问）
+  - name: openclaw-manager
+    enabled: true
+
   # AgentBox Dashboard - 统一服务入口面板
   - name: board
     enabled: true

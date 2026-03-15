@@ -49,6 +49,8 @@ services:
       - "${CLAWPANEL_PORT:-1420}:1420"
       # Skills Manager (容器内 6080)
       - "${SKILLS_MANAGER_NOVNC_PORT:-6080}:6080"
+      # OpenClaw Manager (容器内 6081)
+      - "${OPENCLAW_MANAGER_NOVNC_PORT:-6081}:6081"
 
     # Docker socket 权限
     group_add:
