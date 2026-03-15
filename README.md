@@ -130,8 +130,11 @@ docker exec -it agentbox bash
 | **web-terminal** | 7681 | http://localhost:7681 | 浏览器终端服务 |
 | **openclaw** | 18789 | http://localhost:18789 | 个人 AI 助手网关 |
 | **copaw** | 8088 | http://localhost:8088 | AgentScope AI 助手网关 |
-| **clawpanel** | 1420 | http://localhost:1420 | OpenClaw 可视化管理面板（纯 Web） |
+| **clawpanel** | 1420 | http://localhost:1420 | OpenClaw 可视化管理面板（非官方，纯 Web） |
+| **openclaw-dashboard** | 7000 | http://localhost:7000 | OpenClaw 管理面板（非官方，纯 Web） |
+| **clawport-ui** | 3000 | http://localhost:3000 | OpenClaw 可视化管理中心（非官方，纯 Web） |
 | **skills-manager** | 6080 | http://localhost:6080/vnc.html | AI 技能管理工具 (VNC) |
+| **openclaw-manager** | 6081 | http://localhost:6081/vnc.html | OpenClaw 桌面管理工具 (非官方，VNC) |
 | **novnc-base** | - | - | noVNC 基础显示服务 |
 
 ### Docker 容器服务 (1 个)
@@ -230,7 +233,10 @@ Dashboard 提供：
 | **OpenClaw** | http://localhost:18789 | - | AI 助手网关 |
 | **CoPaw** | http://localhost:8088 | - | AgentScope 网关 |
 | **ClawPanel** | http://localhost:1420 | - | OpenClaw 管理面板 |
+| **OpenClaw Dashboard** | http://localhost:7000 | - | OpenClaw 管理面板 |
+| **ClawPort UI** | http://localhost:3000 | - | OpenClaw 管理中心 |
 | **Skills Manager** | http://localhost:6080/vnc.html | - | VNC 界面 |
+| **OpenClaw Manager** | http://localhost:6081/vnc.html | - | VNC 界面 |
 | **HiClaw Gateway** | http://localhost:18080 | - | Higress 网关 |
 | **HiClaw Console** | http://localhost:18001 | - | 管理控制台 |
 | **HiClaw Element** | http://localhost:18088 | - | Matrix 客户端 |
@@ -252,12 +258,13 @@ agent-box/
 │   ├── entrypoint.sh           # 容器入口脚本（容错设计）
 │   ├── lib.sh                  # 共享函数库
 │   └── plugin-manager.sh       # 插件管理 CLI (agentbox)
-├── plugins/                    # 插件定义目录 (16 个插件)
+├── plugins/                    # 插件定义目录 (17 个插件)
 │   ├── board/                  # Dashboard 服务
 │   ├── openclaw/               # OpenClaw 网关
 │   ├── vscode-server/          # VS Code Server
 │   ├── web-terminal/           # Web 终端
 │   ├── skills-manager/         # 技能管理器
+│   ├── openclaw-manager/       # OpenClaw 桌面管理工具
 │   ├── novnc-base/             # noVNC 基础服务
 │   ├── copaw/                  # CoPaw 网关
 │   ├── hiclaw/                 # HiClaw AI Agent 平台
@@ -268,6 +275,9 @@ agent-box/
 │   ├── opencode/               # OpenCode CLI
 │   ├── kilocode/               # Kilocode CLI
 │   ├── iflow/                  # iFlow CLI
+│   ├── clawpanel/              # ClawPanel 管理面板
+│   ├── openclaw-dashboard/     # OpenClaw Dashboard
+│   ├── clawport-ui/            # ClawPort UI
 │   └── docker/                 # Docker CLI
 ├── host-share/                 # 宿主机共享目录
 └── data/                       # 持久化数据目录
@@ -348,6 +358,11 @@ NOVNC_PORT=6080
 HICLAW_GATEWAY_PORT=18080
 HICLAW_CONSOLE_PORT=18001
 HICLAW_ELEMENT_PORT=18088
+DASHBOARD_PORT=7000       # OpenClaw Dashboard
+CLAWPORT_PORT=3000        # ClawPort UI
+CLAWPANEL_PORT=1420       # ClawPanel
+SKILLS_MANAGER_NOVNC_PORT=6080
+OPENCLAW_MANAGER_NOVNC_PORT=6081
 ```
 
 ### 插件配置 (plugin.yaml)
@@ -609,5 +624,6 @@ MIT
 
 ---
 
-**最后更新:** 2026-03-14  
-**版本:** 1.0.0
+**最后更新:** 2026-03-15
+**版本:** 1.1.0
+**插件数量:** 17 (CLI 工具 8 个 + Web 服务 8 个 + Docker 容器 1 个)
