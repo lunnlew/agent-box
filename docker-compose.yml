@@ -5,6 +5,12 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      args:
+        NPM_REGISTRY: https://registry.npmmirror.com
+        PIP_INDEX_URL: https://mirrors.aliyun.com/pypi/simple/
+        PIP_TRUSTED_HOST: mirrors.aliyun.com
+        UBUNTU_MIRROR: aliyun
+        GOPROXY: https://goproxy.cn,direct
     container_name: agentbox
     hostname: agentbox
     env_file:
@@ -27,16 +33,21 @@ services:
     ports:
       # AgentBox Dashboard
       - "${BOARD_PORT:-8888}:8888"
-      # VS Code Server (容器内8080)
+      # VS Code Server (容器内 8080)
       - "${VSCODE_PORT:-8080}:8080"
-      # Web Terminal (容器内7681)
+      # Web Terminal (容器内 7681)
       - "${WEB_TERMINAL_PORT:-7681}:7681"
-      # OpenClaw Gateway (容器内18789)
+      # OpenClaw Gateway (容器内 18789)
       - "${OPENCLAW_PORT:-18789}:18789"
-      # CoPaw Gateway (容器内8088)
+      # CoPaw Gateway (容器内 8088)
       - "${COPAW_PORT:-8088}:8088"
-      # noVNC / Skills Manager (容器内6080)
-      - "${NOVNC_PORT:-6080}:6080"
+      # ClawPanel (容器内 1420)
+      - "${CLAWPANEL_PORT:-1420}:1420"
+      # Skills Manager (容器内 6080)
+      - "${SKILLS_MANAGER_NOVNC_PORT:-6080}:6080"
+      # SUPERSET Manager (容器内 6081)
+      - "${SUPERSET_NOVNC_PORT:-6081}:6081"
+
     # Docker socket 权限
     group_add:
       - "999"

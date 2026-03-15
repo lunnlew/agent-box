@@ -1,7 +1,7 @@
 # Claude Code 插件定义
 name: claude-code
 version: "1.0.0"
-description: Claude Code CLI - Anthropic官方AI编程助手
+description: Claude Code CLI - Anthropic 官方 AI 编程助手
 
 # 依赖要求
 requires:
@@ -10,7 +10,45 @@ requires:
 
 # 安装命令
 install:
-  - bash -c 'if [ -n "$INSTALL_PROXY" ]; then curl -fsSL --proxy "$INSTALL_PROXY" https://claude.ai/install.sh | bash; elif [ -n "$HTTPS_PROXY" ]; then curl -fsSL --proxy "$HTTPS_PROXY" https://claude.ai/install.sh | bash; else curl -fsSL https://claude.ai/install.sh | bash; fi'
+  - |
+    set +e
+
+    log_info "Installing Claude Code..."
+
+    # 清理旧版本（如果存在）
+    if [ -f ~/.local/bin/claude ]; then
+      log_info "Found existing installation, removing..."
+      rm -f ~/.local/bin/claude 2>/dev/null || true
+    fi
+
+    # 执行安装脚本（支持代理）
+    log_info "Downloading and running install script..."
+    if [ -n "$INSTALL_PROXY" ]; then
+      curl -fsSL --proxy "$INSTALL_PROXY" https://claude.ai/install.sh | bash
+    elif [ -n "$HTTPS_PROXY" ]; then
+      curl -fsSL --proxy "$HTTPS_PROXY" https://claude.ai/install.sh | bash
+    else
+      curl -fsSL https://claude.ai/install.sh | bash
+    fi
+
+    # 验证安装
+    log_info "Verifying installation..."
+    if [ ! -f ~/.local/bin/claude ] && ! command -v claude &>/dev/null; then
+      log_error "Installation failed: claude binary not found"
+      exit 1
+    fi
+
+    # 创建配置（跳过 onboarding）
+    log_info "Configuring Claude Code..."
+    mkdir -p ~/.claude
+    echo '{"hasCompletedOnboarding": true}' > ~/.claude.json
+
+    # 修复权限（容器内以 root 运行，需要给 agent 用户权限）
+    chown agent:agent ~/.claude.json 2>/dev/null || true
+    chown -R agent:agent ~/.claude 2>/dev/null || true
+
+    claude --version
+    log_success "Claude Code installed successfully"
 
 # 环境变量配置
 env:
@@ -19,14 +57,57 @@ env:
 
 # 安装后配置
 post_install:
-  - touch ~/.claude.json && echo '{"hasCompletedOnboarding": true}' > ~/.claude.json
+  - |
+    echo ""
+    echo "============================================"
+    echo "  Claude Code 安装完成!"
+    echo "============================================"
+    echo ""
+    echo "配置文件：~/.claude.json"
+    echo "数据目录：~/.claude"
+    echo ""
+    echo "设置 API Key:"
+    echo "  export ANTHROPIC_API_KEY=your-key"
+    echo ""
+    echo "使用示例:"
+    echo "  claude           # 交互模式"
+    echo "  claude -p '...'  # 单次提示"
+    echo "============================================"
+    echo ""
+    echo "正在安装 CLI-Anything 插件..."
+    # 步骤 1: 添加 CLI-Anything 插件市场
+    if command -v claude &>/dev/null; then
+      log_info "Adding CLI-Anything plugin marketplace..."
+      claude plugin marketplace add HKUDS/CLI-Anything 2>/dev/null && \
+        log_success "CLI-Anything marketplace added" || \
+        log_warning "Failed to add marketplace"
 
+      # 步骤 2: 安装 cli-anything 插件
+      log_info "Installing cli-anything plugin..."
+      claude plugin install cli-anything 2>/dev/null && \
+        log_success "cli-anything plugin installed" || \
+        log_warning "Failed to install cli-anything plugin"
+      
+      # 步骤 3: 添加 Superpowers 插件市场
+      log_info "Adding Superpowers plugin marketplace..."
+      claude plugin marketplace add obra/superpowers-marketplace 2>/dev/null && \
+        log_success "Superpowers marketplace added" || \
+        log_warning "Failed to add Superpowers marketplace"
+      
+      # 步骤 4: 安装 superpowers 插件
+      log_info "Installing superpowers plugin..."
+      claude plugin install superpowers@superpowers-marketplace 2>/dev/null && \
+        log_success "superpowers plugin installed" || \
+        log_warning "Failed to install superpowers plugin"
+    
+    fi
+    echo ""
 
 # 需要持久化的目录
 volumes:
-  - ~/.claude: Claude Code配置和缓存
-  - ~/.claude.json: Claude Code全局配置
-  - ~/.local: Claude Code安装目录
+  - ~/.claude: Claude Code 配置和缓存
+  - ~/.claude.json: Claude Code 全局配置
+  - ~/.local: Claude Code 安装目录
 
 # 健康检查
 healthcheck:
@@ -34,8 +115,53 @@ healthcheck:
 
 # 卸载命令
 uninstall:
-  - rm -f ~/.local/bin/claude
+  - |
+    set +e
+
+    log_info "Uninstalling Claude Code..."
+
+    # 停止可能的进程
+    pkill -f "claude" 2>/dev/null || true
+
+    # 移除二进制文件
+    rm -f ~/.local/bin/claude 2>/dev/null || true
+
+    # 清理安装目录
+    rm -rf ~/.local/share/claude 2>/dev/null || true
+
+    # 清理配置文件（保留用户项目数据）
+    rm -f ~/.claude.json 2>/dev/null || true
+
+    # 清理缓存
+    rm -rf ~/.cache/claude 2>/dev/null || true
+
+    # ⚠️ 保留用户数据（项目、历史记录、设置等）
+    # 如需完全清理，手动执行：rm -rf ~/.claude
+    log_info "User data preserved in ~/.claude"
+
+    log_success "Claude Code uninstalled"
 
 # 更新命令
 update:
-  - bash -c 'if [ -n "$INSTALL_PROXY" ]; then curl -fsSL --proxy "$INSTALL_PROXY" https://claude.ai/install.sh | bash; elif [ -n "$HTTPS_PROXY" ]; then curl -fsSL --proxy "$HTTPS_PROXY" https://claude.ai/install.sh | bash; else curl -fsSL https://claude.ai/install.sh | bash; fi'
+  - |
+    set +e
+
+    log_info "Updating Claude Code..."
+
+    # 执行安装脚本（会覆盖旧版本）
+    if [ -n "$INSTALL_PROXY" ]; then
+      curl -fsSL --proxy "$INSTALL_PROXY" https://claude.ai/install.sh | bash
+    elif [ -n "$HTTPS_PROXY" ]; then
+      curl -fsSL --proxy "$HTTPS_PROXY" https://claude.ai/install.sh | bash
+    else
+      curl -fsSL https://claude.ai/install.sh | bash
+    fi
+
+    # 验证更新
+    if command -v claude &>/dev/null; then
+      claude --version
+      log_success "Claude Code updated successfully"
+    else
+      log_error "Update verification failed"
+      exit 1
+    fi

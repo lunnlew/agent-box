@@ -1,7 +1,7 @@
 # OpenAI Codex 插件定义
 name: codex
 version: "0.80.0"
-description: OpenAI Codex CLI - OpenAI官方AI编程助手
+description: OpenAI Codex CLI - OpenAI 官方 AI 编程助手
 
 # 依赖要求
 requires:
@@ -11,15 +11,69 @@ requires:
 # 安装命令
 install:
   - |
-    # 先尝试正常卸载
-    npm uninstall -g @openai/codex 2>/dev/null || true
-    # 清理可能残留的目录（处理 ENOTEMPTY 错误）
-    CODEX_PATH=$(npm root -g 2>/dev/null)/@openai/codex
-    if [ -d "$CODEX_PATH" ]; then
-      rm -rf "$CODEX_PATH" 2>/dev/null || true
+    set +e
+
+    PKG_NAME="@openai/codex"
+    NPM_ROOT=$(npm root -g 2>/dev/null)
+    PKG_PATH="$NPM_ROOT/@openai/codex"
+    # npm 10.x 不支持 bin -g，使用 prefix + /bin 替代
+    NPM_PREFIX=$(npm prefix -g 2>/dev/null)
+    PKG_BIN="$NPM_PREFIX/bin/codex"
+
+    log_info "NPM root: $NPM_ROOT"
+    log_info "NPM prefix: $NPM_PREFIX"
+    log_info "Installing OpenAI Codex..."
+
+    # 清理旧版本
+    log_info "Cleaning up existing installation..."
+    npm uninstall -g "$PKG_NAME" 2>/dev/null || true
+    [ -d "$PKG_PATH" ] && rm -rf "$PKG_PATH" 2>/dev/null || true
+    [ -L "$PKG_BIN" ] && rm -f "$PKG_BIN" 2>/dev/null || true
+    [ -f "$PKG_BIN" ] && rm -f "$PKG_BIN" 2>/dev/null || true
+
+    # 清理临时目录（npm 中断会留下 .codex-* 目录）
+    for tmp_dir in "$NPM_ROOT"/.codex-*; do
+      [ -d "$tmp_dir" ] && rm -rf "$tmp_dir" 2>/dev/null || true
+    done
+
+    # 安装
+    log_info "Installing package..."
+    if ! npm install -g "$PKG_NAME"@0.80.0; then
+      log_warning "First attempt failed, retrying..."
+      sleep 2
+      npm install -g "$PKG_NAME"@0.80.0
     fi
-    # 全局安装
-    npm install -g @openai/codex@0.80.0
+
+    # 验证安装
+    log_info "Verifying installation..."
+    if [ ! -f "$PKG_PATH/package.json" ]; then
+      log_error "Installation incomplete: package.json missing"
+      exit 1
+    fi
+
+    # 检查二进制文件或符号链接是否存在
+    if [ ! -L "$PKG_BIN" ] && [ ! -f "$PKG_BIN" ]; then
+      log_error "Installation incomplete: binary not found at $PKG_BIN"
+      # 尝试备用路径
+      if [ -L "$HOME/tools/bin/codex" ] || [ -f "$HOME/tools/bin/codex" ]; then
+        log_info "Binary found at $HOME/tools/bin/codex, creating symlink..."
+        mkdir -p "$(dirname "$PKG_BIN")"
+        ln -sf "$HOME/tools/bin/codex" "$PKG_BIN" 2>/dev/null || true
+      else
+        log_error "Binary also not found at $HOME/tools/bin/codex"
+        log_info "Available binaries in $HOME/tools/bin:"
+        ls -la "$HOME/tools/bin/" 2>/dev/null | grep -i codex || echo "(none)"
+        exit 1
+      fi
+    fi
+
+    # 最终清理
+    for tmp_dir in "$NPM_ROOT"/.codex-*; do
+      [ -d "$tmp_dir" ] && rm -rf "$tmp_dir" 2>/dev/null || true
+    done
+
+    codex --version
+    log_success "OpenAI Codex installed successfully"
 
 # 环境变量配置
 env:
@@ -27,7 +81,7 @@ env:
 
 # 需要持久化的目录
 volumes:
-  - ~/.codex: Codex配置和缓存
+  - ~/.codex: Codex 配置和缓存
 
 # 健康检查
 healthcheck:
@@ -35,8 +89,71 @@ healthcheck:
 
 # 卸载命令
 uninstall:
-  - npm uninstall -g @openai/codex
+  - |
+    set +e
+
+    PKG_NAME="@openai/codex"
+    PKG_PATH="$(npm root -g 2>/dev/null)/@openai/codex"
+    # npm 10.x 不支持 bin -g，使用 prefix + /bin 替代
+    NPM_PREFIX=$(npm prefix -g 2>/dev/null)
+    PKG_BIN="$NPM_PREFIX/bin/codex"
+
+    log_info "Uninstalling OpenAI Codex..."
+
+    # npm 卸载
+    npm uninstall -g "$PKG_NAME" 2>/dev/null || true
+
+    # 清理残留目录
+    [ -d "$PKG_PATH" ] && rm -rf "$PKG_PATH" 2>/dev/null || true
+    [ -L "$PKG_BIN" ] && rm -f "$PKG_BIN" 2>/dev/null || true
+    [ -f "$PKG_BIN" ] && rm -f "$PKG_BIN" 2>/dev/null || true
+
+    # 清理临时目录
+    for tmp_dir in "$(npm root -g 2>/dev/null)"/.codex-*; do
+      [ -d "$tmp_dir" ] && rm -rf "$tmp_dir" 2>/dev/null || true
+    done
+
+    # 可选：保留用户配置（注释掉下一行可保留）
+    # rm -rf ~/.codex 2>/dev/null || true
+
+    log_success "OpenAI Codex uninstalled"
 
 # 更新命令
 update:
-  - npm update -g @openai/codex
+  - |
+    set +e
+
+    PKG_NAME="@openai/codex"
+    PKG_PATH="$(npm root -g 2>/dev/null)/@openai/codex"
+    # npm 10.x 不支持 bin -g，使用 prefix + /bin 替代
+    NPM_PREFIX=$(npm prefix -g 2>/dev/null)
+    PKG_BIN="$NPM_PREFIX/bin/codex"
+
+    log_info "Updating OpenAI Codex..."
+
+    # 备份用户配置
+    if [ -d ~/.codex ]; then
+      cp -r ~/.codex ~/.codex.bak.$(date +%Y%m%d%H%M%S) 2>/dev/null || true
+    fi
+
+    # 更新
+    npm update -g "$PKG_NAME" || {
+      log_warning "Update failed, reinstalling..."
+      npm install -g "$PKG_NAME"@latest
+    }
+
+    # 验证
+    if [ ! -f "$PKG_PATH/package.json" ]; then
+      log_error "Update verification failed"
+      # 恢复备份
+      if [ -d ~/.codex.bak.* ]; then
+        mv ~/.codex.bak.* ~/.codex 2>/dev/null || true
+      fi
+      exit 1
+    fi
+
+    codex --version
+    log_success "OpenAI Codex updated successfully"
+
+    # 清理备份
+    rm -rf ~/.codex.bak.* 2>/dev/null || true

@@ -10,8 +10,76 @@ requires:
 
 # 安装命令
 install:
-  - mkdir -p ~/.code-server/lib ~/.code-server/bin ~/.cache/code-server
-  - bash -c 'if [ -n "$INSTALL_PROXY" ]; then curl -fsSLk --proxy "$INSTALL_PROXY" https://code-server.dev/install.sh | sh -s -- --method standalone; elif [ -n "$HTTPS_PROXY" ]; then curl -fsSLk --proxy "$HTTPS_PROXY" https://code-server.dev/install.sh | sh -s -- --method standalone; else curl -fsSLk https://code-server.dev/install.sh | sh -s -- --method standalone; fi'
+  - |
+    set +e
+
+    log_info "Installing VS Code Server (code-server)..."
+
+    # 完全清理旧版本和缓存 - 使用 find 确保清理所有相关目录
+    log_info "Cleaning up old installation..."
+    find ~/.code-server/lib -maxdepth 1 -type d -name "code-server-*" -exec rm -rf {} \; 2>/dev/null || true
+    rm -rf ~/.cache/code-server/* 2>/dev/null || true
+    rm -f ~/.code-server/bin/code-server 2>/dev/null || true
+
+    # 创建必要目录
+    mkdir -p ~/.code-server/lib ~/.code-server/bin ~/.cache/code-server
+
+    # 执行安装脚本（支持代理）
+    log_info "Downloading and running install script..."
+
+    # 先下载到临时文件，再执行
+    TEMP_SCRIPT=$(mktemp)
+
+    if [ -n "$INSTALL_PROXY" ]; then
+      curl -fsSLk --connect-timeout 30 --max-time 600 --retry 3 --proxy "$INSTALL_PROXY" https://code-server.dev/install.sh -o "$TEMP_SCRIPT"
+    elif [ -n "$HTTPS_PROXY" ]; then
+      curl -fsSLk --connect-timeout 30 --max-time 600 --retry 3 --proxy "$HTTPS_PROXY" https://code-server.dev/install.sh -o "$TEMP_SCRIPT"
+    else
+      curl -fsSLk --connect-timeout 30 --max-time 600 --retry 3 https://code-server.dev/install.sh -o "$TEMP_SCRIPT"
+    fi
+
+    if [ ! -s "$TEMP_SCRIPT" ]; then
+      log_error "Failed to download install script"
+      rm -f "$TEMP_SCRIPT"
+      exit 1
+    fi
+
+    log_info "Install script downloaded to $TEMP_SCRIPT"
+    chmod +x "$TEMP_SCRIPT"
+
+    # 执行安装脚本
+    bash "$TEMP_SCRIPT" --method standalone
+    install_result=$?
+
+    rm -f "$TEMP_SCRIPT"
+
+    if [ $install_result -ne 0 ]; then
+      log_error "Install script exited with code $install_result"
+      exit 1
+    fi
+
+    # 验证安装
+    log_info "Verifying installation..."
+
+    # 等待一下确保文件已创建
+    sleep 2
+
+    # 检查 lib 目录下的安装
+    latest_version=$(ls -d ~/.code-server/lib/code-server-* 2>/dev/null | head -1)
+    if [ -n "$latest_version" ] && [ -f "$latest_version/bin/code-server" ]; then
+        # 创建符号链接
+        ln -sf "$latest_version/bin/code-server" ~/.code-server/bin/code-server
+        log_info "Created symlink: ~/.code-server/bin/code-server"
+    fi
+
+    if [ ! -f ~/.code-server/bin/code-server ] && ! command -v code-server &>/dev/null; then
+      log_error "Installation failed: code-server binary not found"
+      log_error "Available files in lib: $(ls -la ~/.code-server/lib/ 2>/dev/null || echo 'empty')"
+      exit 1
+    fi
+
+    ~/.code-server/bin/code-server --version
+    log_success "VS Code Server installed successfully"
 
 # 环境变量配置
 env:
@@ -22,45 +90,142 @@ env:
 
 # 安装后配置
 post_install:
-  - mkdir -p ~/.config/code-server
-  # 创建 code-server 配置文件
   - |
-    cat > ~/.config/code-server/config.yaml << EOF
+    log_info "Configuring VS Code Server..."
+    mkdir -p ~/.config/code-server
+    
+    # 创建配置文件（如果不存在）
+    if [ ! -f ~/.config/code-server/config.yaml ]; then
+      cat > ~/.config/code-server/config.yaml << EOF
     bind-addr: 0.0.0.0:${VSCODE_PORT:-8080}
     auth: password
     password: agentbox
     cert: false
     disable-telemetry: true
     EOF
-  # 安装中文语言包扩展
-  - code-server --install-extension MS-CEINTL.vscode-language-pack-zh-hans
-  # 设置默认语言为中文
-  - |
+    fi
+    
+    # 安装中文语言包
+    log_info "Installing Chinese language pack..."
+    code-server --install-extension MS-CEINTL.vscode-language-pack-zh-hans || true
+    
+    # 设置默认语言
     mkdir -p ~/.local/share/code-server/User
     cat > ~/.local/share/code-server/User/argv.json << 'EOF'
     {
       "locale": "zh-cn"
     }
     EOF
+    
+    echo ""
+    echo "============================================"
+    echo "  VS Code Server 安装完成!"
+    echo "============================================"
+    echo ""
+    echo "访问地址：http://localhost:${VSCODE_PORT:-8080}"
+    echo "默认密码：agentbox"
+    echo "配置目录：~/.config/code-server"
+    echo "工作目录：\$HOME"
+    echo "============================================"
+    echo ""
 
 # 需要持久化的目录
 # 注意：~/.config 已在 docker-compose.yml 中持久化，无需重复
 volumes:
-  - ~/.code-server: VS Code安装目录
+  - ~/.code-server: VS Code 安装目录
+
+# 服务配置（Web 应用服务）
+service:
+  # 常驻服务，使用 Supervisor 管理
+  daemon: true
+  # 服务启动后自动启动
+  auto_start: true
+  # 服务崩溃后自动重启
+  restart: true
+  # 最大重启次数
+  max_restarts: 3
+  # 启动命令
+  command: bash -c 'code-server --bind-addr 0.0.0.0:${VSCODE_PORT:-8080} --auth password --disable-telemetry $HOME'
+  # ⚠️ 注意：daemon 服务使用 supervisorctl stop/start/restart
+  # 不配置 stop_command 和 restart_command
 
 # 健康检查
 healthcheck:
   command: code-server --version
 
-# 服务配置
-service:
-  auto_start: true
-  # 启动时直接打开主目录作为工作目录
-  command: bash -c 'code-server --bind-addr 0.0.0.0:${VSCODE_PORT:-8080} --auth password --disable-telemetry $HOME'
-
 # 卸载命令
 uninstall:
+  - |
+    set +e
+    
+    log_info "Uninstalling VS Code Server..."
+    
+    # 停止进程
+    pkill -f "code-server" 2>/dev/null || true
+    
+    # 移除二进制文件
+    rm -f ~/.code-server/bin/code-server 2>/dev/null || true
+    rm -f ~/.local/bin/code-server 2>/dev/null || true
+    
+    # 移除安装目录
+    rm -rf ~/.code-server 2>/dev/null || true
+
+    rm -rf ~/supervisor/vscode-server.conf 2>/dev/null || true
+    rm -rf ~/supervisor/vscode-server.sh 2>/dev/null || true
+    
+    # ⚠️ 保留用户配置和扩展
+    # rm -rf ~/.config/code-server 2>/dev/null || true
+    # rm -rf ~/.local/share/code-server 2>/dev/null || true
+    
+    log_success "VS Code Server uninstalled"
 
 # 更新命令
 update:
-  - bash -c 'if [ -n "$INSTALL_PROXY" ]; then curl -fsSLk --proxy "$INSTALL_PROXY" https://code-server.dev/install.sh | sh -s -- --method standalone; elif [ -n "$HTTPS_PROXY" ]; then curl -fsSLk --proxy "$HTTPS_PROXY" https://code-server.dev/install.sh | sh -s -- --method standalone; else curl -fsSLk https://code-server.dev/install.sh | sh -s -- --method standalone; fi'
+  - |
+    set +e
+
+    log_info "Updating VS Code Server..."
+
+    # 停止当前服务
+    pkill -f "code-server" 2>/dev/null || true
+
+    # 备份用户配置
+    if [ -d ~/.config/code-server ]; then
+      cp -r ~/.config/code-server ~/.config/code-server.bak.$(date +%Y%m%d%H%M%S) 2>/dev/null || true
+    fi
+
+    # 清理旧版本
+    log_info "Cleaning up old installation..."
+    rm -rf ~/.code-server/lib/code-server-* 2>/dev/null || true
+    rm -rf ~/.cache/code-server 2>/dev/null || true
+    rm -f ~/.code-server/bin/code-server 2>/dev/null || true
+
+    # 执行安装脚本（覆盖安装）
+    if [ -n "$INSTALL_PROXY" ]; then
+      curl -fsSLk --proxy "$INSTALL_PROXY" https://code-server.dev/install.sh | sh -s -- --method standalone
+    elif [ -n "$HTTPS_PROXY" ]; then
+      curl -fsSLk --proxy "$HTTPS_PROXY" https://code-server.dev/install.sh | sh -s -- --method standalone
+    else
+      curl -fsSLk https://code-server.dev/install.sh | sh -s -- --method standalone
+    fi
+
+    # 验证更新
+    latest_version=$(ls -d ~/.code-server/lib/code-server-* 2>/dev/null | head -1)
+    if [ -n "$latest_version" ] && [ -f "$latest_version/bin/code-server" ]; then
+        ln -sf "$latest_version/bin/code-server" ~/.code-server/bin/code-server
+    fi
+
+    if [ -f ~/.code-server/bin/code-server ] || command -v code-server &>/dev/null; then
+      ~/.code-server/bin/code-server --version 2>/dev/null || code-server --version
+      log_success "VS Code Server updated successfully"
+    else
+      log_error "Update verification failed"
+      # 恢复备份
+      if [ -d ~/.config/code-server.bak.* ]; then
+        mv ~/.config/code-server.bak.* ~/.config/code-server 2>/dev/null || true
+      fi
+      exit 1
+    fi
+
+    # 清理备份
+    rm -rf ~/.config/code-server.bak.* 2>/dev/null || true

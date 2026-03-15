@@ -3,27 +3,27 @@
 # 详细配置请参考 plugins/*/plugin.yaml
 
 plugins:
-  # Claude Code CLI - Anthropic官方AI编程助手
+  # Claude Code CLI - Anthropic 官方 AI 编程助手
   - name: claude-code
     enabled: true
 
-  # Qwen Code CLI - 阿里云通义千问AI编程助手
+  # Qwen Code CLI - 阿里云通义千问 AI 编程助手
   - name: qwen-code
     enabled: true
 
-  # OpenCode AI - 开源AI编程助手
+  # OpenCode AI - 开源 AI 编程助手
   - name: opencode
     enabled: true
 
-  # iFlow AI CLI - AI编程助手
+  # iFlow AI CLI - AI 编程助手
   - name: iflow
     enabled: true
 
-  # OpenClaw - 个人AI助手，支持多渠道消息平台
+  # OpenClaw - 个人 AI 助手，支持多渠道消息平台
   - name: openclaw
     enabled: true
 
-  # VS Code Server - 浏览器中的VS Code IDE
+  # VS Code Server - 浏览器中的 VS Code IDE
   - name: vscode-server
     enabled: true
 
@@ -31,25 +31,23 @@ plugins:
   - name: web-terminal
     enabled: true
 
-  # Kilocode CLI - AI编程助手命令行工具
+  # Kilocode CLI - AI 编程助手命令行工具
   - name: kilocode
     enabled: true
 
-  # CoPaw - AgentScope AI编程助手
+  # CoPaw - AgentScope AI 编程助手
   - name: copaw
     enabled: true
 
-  # OpenAI Codex CLI - OpenAI官方AI编程助手
+  # OpenAI Codex CLI - OpenAI 官方 AI 编程助手
   - name: codex
     enabled: true
 
-  # noVNC 基础服务 - 提供虚拟显示和浏览器VNC访问
-  # 作为基础服务，供其他 GUI 应用（如 skills-manager）复用
-  - name: novnc-base
+  # ClawPanel - OpenClaw AI Agent 可视化管理面板（纯 Web 服务）
+  - name: clawpanel
     enabled: true
 
-  # Skills Manager - AI编程助手技能管理工具（浏览器访问）
-  # 依赖 novnc-base 提供的虚拟显示环境
+  # Skills Manager - AI 编程助手技能管理工具（浏览器访问）
   - name: skills-manager
     enabled: true
 
@@ -57,7 +55,7 @@ plugins:
   - name: board
     enabled: true
 
-  # Cursor CLI - AI编程助手命令行工具
+  # Cursor CLI - AI 编程助手命令行工具
   - name: cursor-cli
     enabled: true
 
@@ -65,6 +63,10 @@ plugins:
   - name: docker
     enabled: true
 
-  # HiClaw - AI Agent平台，集成Higress网关和Matrix消息平台
+  # HiClaw - AI Agent 平台，集成 Higress 网关和 Matrix 消息平台
   - name: hiclaw
-    enabled: true 
+    enabled: true
+
+  # xvfb - 已禁用，各应用使用独立 Xvfb 实例
+  # - name: xvfb
+  #   enabled: false

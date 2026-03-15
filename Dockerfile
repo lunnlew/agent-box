@@ -4,12 +4,13 @@
 FROM ubuntu:22.04
 
 # 构建参数 - 镜像源配置
-ARG NPM_REGISTRY=https://registry.npmjs.org
-ARG PIP_INDEX_URL=https://pypi.org/simple
-ARG PIP_TRUSTED_HOST=pypi.org
-ARG UBUNTU_MIRROR=
+# 默认使用国内镜像源加速下载
+ARG NPM_REGISTRY=https://registry.npmmirror.com
+ARG PIP_INDEX_URL=https://mirrors.aliyun.com/pypi/simple/
+ARG PIP_TRUSTED_HOST=mirrors.aliyun.com
+ARG UBUNTU_MIRROR=aliyun
 ARG GITHUB_PROXY=
-ARG GOPROXY=https://proxy.golang.org,direct
+ARG GOPROXY=https://goproxy.cn,direct
 
 # 设置环境变量
 ENV DEBIAN_FRONTEND=noninteractive
@@ -92,22 +93,33 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/* \
     && apt-get clean
 
-# 配置 npm 镜像源
-RUN if [ -n "$NPM_REGISTRY" ] && [ "$NPM_REGISTRY" != "https://registry.npmjs.org" ]; then \
-        npm config set registry "$NPM_REGISTRY" -g; \
+# 配置 npm 镜像源（运行时环境变量优先）
+RUN if [ -n "$NPM_REGISTRY" ]; then \
+        npm config set registry "$NPM_REGISTRY" -g && \
+        echo "NPM registry configured: $NPM_REGISTRY"; \
+    else \
+        npm config set registry "https://registry.npmmirror.com" -g && \
+        echo "NPM registry configured: https://registry.npmmirror.com (default)"; \
     fi
 
-# 配置 pip 镜像源
-RUN if [ -n "$PIP_INDEX_URL" ] && [ "$PIP_INDEX_URL" != "https://pypi.org/simple" ]; then \
+# 配置 pip 镜像源（运行时环境变量优先）
+RUN if [ -n "$PIP_INDEX_URL" ]; then \
         pip3 config set global.index-url "$PIP_INDEX_URL" && \
-        pip3 config set global.trusted-host "$PIP_TRUSTED_HOST"; \
+        if [ -n "$PIP_TRUSTED_HOST" ]; then \
+            pip3 config set global.trusted-host "$PIP_TRUSTED_HOST"; \
+        fi && \
+        echo "PIP index configured: $PIP_INDEX_URL"; \
+    else \
+        pip3 config set global.index-url "https://mirrors.aliyun.com/pypi/simple/" && \
+        pip3 config set global.trusted-host "mirrors.aliyun.com" && \
+        echo "PIP index configured: https://mirrors.aliyun.com/pypi/simple/ (default)"; \
     fi
 
-# 安装 pnpm 和 bun
-RUN npm install -g --prefix /usr/local pnpm bun && \
-    if [ -n "$NPM_REGISTRY" ]; then \
-        pnpm config set registry "$NPM_REGISTRY" -g; \
-    fi
+# 安装 pnpm 和 bun（使用已配置的 npm 镜像源）
+RUN npm_config_registry=$(npm config get registry) && \
+    npm install -g --prefix /usr/local pnpm bun && \
+    pnpm config set registry "$npm_config_registry" -g && \
+    echo "pnpm registry configured: $npm_config_registry"
 
 # 安装 uv（快速 Python 包管理器）
 RUN curl -LsSf https://astral.sh/uv/install.sh | sh
@@ -120,7 +132,7 @@ RUN groupadd -g 999 docker && \
 WORKDIR /home/agent
 
 # 创建必要的目录结构（不创建插件数据目录，避免与符号链接冲突）
-RUN mkdir -p tools plugins logs .npm .pip supervisor && \
+RUN mkdir -p tools plugins logs .npm .pip supervisor .cache/uv && \
     touch .bashrc .profile && \
     chown -R agent:agent /home/agent && \
     # 创建 X11 socket 目录（GUI 应用需要）

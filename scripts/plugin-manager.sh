@@ -4,7 +4,8 @@
 # ===========================================
 # 用法：agentbox {install|uninstall|list|enable|disable|update|status|mirrors|install-all} [plugin-name]
 
-set -e
+# ⚠️ 不使用 set -e，避免单个命令失败导致脚本退出
+# 使用局部错误处理
 
 # 引入共享函数库
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -270,6 +271,7 @@ setup_plugin_volumes() {
 # ===========================================
 
 # 执行安装命令（带错误处理和重试）
+# 注意：get_install_commands 已经返回处理后的纯命令内容，直接执行即可
 execute_install_commands() {
     local plugin_file="$1"
     local plugin_name="$2"
@@ -281,56 +283,44 @@ execute_install_commands() {
         return 0
     fi
 
-    local current_cmd=""
-    local in_multiline=false
-
-    while IFS= read -r line; do
-        # 检查是否是新的列表项（以 - 开头）
-        if [[ "$line" =~ ^-[[:space:]] ]]; then
-            # 如果之前有累积的命令，执行它
-            if [ -n "$current_cmd" ]; then
-                execute_single_command "$current_cmd" "$plugin_name" "$plugin_file" || return 1
-            fi
-            # 开始新的命令
-            local item_content=$(echo "$line" | sed 's/^[[:space:]]*-[[:space:]]*//')
-            if [[ "$item_content" == "|" ]] || [[ "$item_content" == "|-" ]] || [[ "$item_content" == "|+" ]]; then
-                in_multiline=true
-                current_cmd=""
-            else
-                in_multiline=false
-                current_cmd="$item_content"
-            fi
-        elif [ "$in_multiline" = true ] || [ -n "$current_cmd" ]; then
-            # 多行块内容或续行
-            if [ -z "$current_cmd" ]; then
-                current_cmd="$line"
-            else
-                current_cmd="${current_cmd}"$'\n'"$line"
-            fi
-        fi
-    done <<< "$commands"
-
-    # 执行最后一个命令
-    if [ -n "$current_cmd" ]; then
-        execute_single_command "$current_cmd" "$plugin_name" "$plugin_file" || return 1
-    fi
+    # 直接执行命令（get_yaml_list_commands 已经处理过多行块）
+    execute_single_command "$commands" "$plugin_name" "$plugin_file" || return 1
 
     return 0
 }
 
-# 执行单个命令（带错误处理和重试）
+# 执行单个命令（带错误处理、重试和超时）
+# ⚠️ 注意：会移除命令中的 set -e，避免脚本提前退出导致错误信息丢失
 execute_single_command() {
     local cmd="$1"
     local plugin_name="$2"
     local plugin_file="$3"
+    local timeout_seconds="${INSTALL_TIMEOUT:-1800}"  # 默认 30 分钟超时
 
     log_info "Executing: $(echo "$cmd" | head -1)"
+    log_info "Timeout: ${timeout_seconds}s"
 
     local output
     local exit_code
-    output=$(eval "$cmd" 2>&1) && exit_code=0 || exit_code=$?
 
-    if [ $exit_code -ne 0 ]; then
+    # 移除命令中的 set -e，替换为 set +e，确保错误能够正确捕获和显示
+    local safe_cmd=$(echo "$cmd" | sed 's/set -e/set +e/g')
+
+    # 为 npm install 命令增加额外配置，提高稳定性
+    # 使用 --maxsockets 1 避免并发请求导致的问题
+    safe_cmd=$(echo "$safe_cmd" | sed 's/npm install -g/npm install -g --maxsockets 1/g')
+
+    # 使用 timeout 命令执行，避免无限挂起
+    # 定义日志函数，确保在子 shell 中也可用
+    local setup_functions='log_info(){ echo -e "\033[0;34m[INFO]\033[0m $*"; }; log_success(){ echo -e "\033[0;32m[SUCCESS]\033[0m $*"; }; log_warning(){ echo -e "\033[1;33m[WARNING]\033[0m $*"; }; log_error(){ echo -e "\033[0;31m[ERROR]\033[0m $*"; };'
+    output=$(timeout "$timeout_seconds" bash -c "$setup_functions $safe_cmd" 2>&1) && exit_code=0 || exit_code=$?
+
+    if [ $exit_code -eq 124 ]; then
+        # timeout 命令的退出码 124 表示超时
+        log_error "Install command timed out after ${timeout_seconds}s: $plugin_name"
+        log_info "You can increase timeout with: export INSTALL_TIMEOUT=600"
+        return 1
+    elif [ $exit_code -ne 0 ]; then
         if echo "$output" | grep -q "ENOTEMPTY"; then
             log_warning "Detected npm ENOTEMPTY error, attempting cleanup and retry..."
 
@@ -341,8 +331,8 @@ execute_single_command() {
                 rm -rf "$HOME/tools/lib/node_modules/$pkg_name" 2>/dev/null || true
 
                 log_info "Retrying: $cmd"
-                eval "$cmd" || {
-                    log_error "Install command failed after retry: $(eval "$cmd" 2>&1)"
+                timeout "$timeout_seconds" bash -c "$cmd" 2>&1 || {
+                    log_error "Install command failed after retry: $(timeout "$timeout_seconds" bash -c "$cmd" 2>&1 | head -5)"
                     return 1
                 }
             else
@@ -352,36 +342,6 @@ execute_single_command() {
         else
             log_error "Install command failed: $output"
             return 1
-        fi
-    else
-        # npm install 成功后的额外验证（处理安装不完整的情况）
-        if [[ "$cmd" =~ npm\ install\ -g\ ([^[:space:]]+) ]]; then
-            local pkg_name="${BASH_REMATCH[1]}"
-            local npm_root=$(npm root -g 2>/dev/null)
-            local pkg_path="$npm_root/$pkg_name"
-
-            log_info "Verifying npm package installation: $pkg_name"
-
-            # 检查 package.json 是否存在
-            if [ ! -f "$pkg_path/package.json" ]; then
-                log_error "Package $pkg_name installation incomplete: package.json missing"
-                log_info "Cleaning up incomplete installation..."
-
-                # 清理临时目录（npm 安装中断会留下 .openclaw-* 目录）
-                for tmp_dir in "$npm_root"/.${pkg_name}-*; do
-                    [ -d "$tmp_dir" ] && rm -rf "$tmp_dir" 2>/dev/null || true
-                done
-
-                rm -rf "$pkg_path" 2>/dev/null || true
-                rm -f "$HOME/tools/bin/$pkg_name" 2>/dev/null || true
-
-                # 重试安装
-                log_info "Retrying installation..."
-                eval "$cmd" || {
-                    log_error "Retry installation failed: $pkg_name"
-                    return 1
-                }
-            fi
         fi
     fi
 
@@ -742,7 +702,7 @@ set_mirror() {
 # 批量操作
 # ===========================================
 
-# 安装所有已启用的插件
+# 安装所有已启用的插件（容错模式）
 install_all_plugins() {
     local force_install="${1:-false}"
     log_info "Installing all enabled plugins..."
@@ -760,14 +720,37 @@ install_all_plugins() {
     fi
 
     log_info "Found enabled plugins: $(echo $enabled_plugins | tr '\n' ' ')"
+    
+    # 计算总数
+    local total=$(echo "$enabled_plugins" | wc -l)
+    local current=0
+    local failed_plugins=()
+    local success_count=0
+    local fail_count=0
 
     while IFS= read -r plugin_name; do
         if [ -n "$plugin_name" ]; then
-            install_plugin "$plugin_name" "$force_install"
+            ((current++))
+            log_info "Installing plugin: $plugin_name ($current/$total)"
+            if install_plugin "$plugin_name" "$force_install"; then
+                ((success_count++))
+            else
+                ((fail_count++))
+                failed_plugins+=("$plugin_name")
+                log_warning "Failed to install: $plugin_name"
+            fi
         fi
     done <<< "$enabled_plugins"
 
-    log_success "All enabled plugins checked"
+    log_info "Installation summary: $success_count succeeded, $fail_count failed"
+    
+    if [ ${#failed_plugins[@]} -gt 0 ]; then
+        log_warning "Failed plugins: ${failed_plugins[*]}"
+        log_info "You can retry failed plugins individually with: agentbox install <plugin-name>"
+    fi
+
+    log_success "Plugin installation completed"
+    return 0  # 总是返回成功，避免容器重启
 }
 
 # 恢复所有已安装插件的符号链接
@@ -873,6 +856,109 @@ start_plugin_service() {
         ensure_plugin_volumes "$plugin_name" "$plugin_file"
         process_plugin_env "$plugin_file" "setup"
 
+        # 检查 Supervisor 配置是否已存在
+        local conf_file="$HOME/supervisor/${plugin_name}.conf"
+        local config_exists=false
+        [ -f "$conf_file" ] && config_exists=true
+
+        # 如果配置已存在且服务正在运行，跳过重新配置
+        if [ "$config_exists" = "true" ] && [ "$is_daemon" = "true" ]; then
+            local svc_status=$(supervisorctl -c "$SUPERVISOR_CONF" status "$plugin_name" 2>/dev/null || echo "")
+            local svc_state=$(echo "$svc_status" | awk '{print $2}')
+
+            if [ "$svc_state" = "RUNNING" ]; then
+                log_info "Service $plugin_name already running (skip)"
+                return 0
+            fi
+        fi
+
+        # 启动前清理旧进程（防止孤儿进程）
+        log_info "Cleaning up orphan processes for $plugin_name..."
+
+        # 1. 从 service_cmd 中提取第一个命令/进程名用于清理
+        local proc_name=""
+        # 处理 bash -c '...' 或 sh -c '...' 的情况，提取内部命令
+        if [[ "$service_cmd" =~ (bash|sh|/bin/bash|/bin/sh)[[:space:]]+-c[[:space:]]+[\'\"](.*)[\'\"] ]]; then
+            # 从内部命令中提取第一个单词作为进程名
+            local inner_cmd="${BASH_REMATCH[2]}"
+            proc_name=$(echo "$inner_cmd" | awk '{print $1}' | xargs basename 2>/dev/null || echo "$inner_cmd" | awk '{print $1}')
+        else
+            proc_name=$(echo "$service_cmd" | awk '{print $1}' | xargs basename 2>/dev/null || echo "$service_cmd" | awk '{print $1}')
+        fi
+
+        # 清理同名进程（使用精确匹配，避免误杀）
+        if [ -n "$proc_name" ] && [ "$proc_name" != "" ]; then
+            # 匹配规则：进程名后必须跟空格/参数或是行尾，且前面必须是路径分隔符或空格
+            # 这样 openclaw 只会匹配 openclaw 和 /path/to/openclaw，不会匹配 openclaw-gateway
+            local proc_pids=$(pgrep -f "(^|[[:space:]/])${proc_name}([[:space:]]|$)" 2>/dev/null || true)
+            if [ -n "$proc_pids" ]; then
+                # 二次过滤：检查实际的进程名，确保精确匹配
+                local filtered_pids=""
+                for pid in $proc_pids; do
+                    local cmd=$(ps -o comm= -p "$pid" 2>/dev/null || echo "")
+                    local base_cmd=$(basename "$cmd" 2>/dev/null || echo "")
+                    if [ "$base_cmd" = "$proc_name" ]; then
+                        filtered_pids="$filtered_pids $pid"
+                    fi
+                done
+
+                if [ -n "$filtered_pids" ]; then
+                    log_info "  Killing $proc_name processes:$filtered_pids"
+                    for pid in $filtered_pids; do
+                        pkill -9 -P "$pid" 2>/dev/null || true
+                        kill -9 "$pid" 2>/dev/null || true
+                    done
+                    sleep 2
+                fi
+            fi
+        fi
+
+        # 2. 使用 Supervisor 停止服务（如果存在配置）
+        if pgrep -x "supervisord" > /dev/null; then
+            local svc_status=$(supervisorctl -c "$SUPERVISOR_CONF" status "$plugin_name" 2>/dev/null | awk '{print $1, $2}')
+            local svc_name=$(echo "$svc_status" | awk '{print $1}')
+            local svc_state=$(echo "$svc_status" | awk '{print $2}')
+
+            # 只有服务已存在于 Supervisor 中才执行停止
+            if [ "$svc_name" = "$plugin_name:" ]; then
+                if [ "$svc_state" = "RUNNING" ] || [ "$svc_state" = "STARTING" ] || [ "$svc_state" = "BACKOFF" ] || [ "$svc_state" = "FATAL" ]; then
+                    log_info "  Stopping existing service via Supervisor..."
+                    supervisorctl -c "$SUPERVISOR_CONF" stop "$plugin_name" > /dev/null 2>&1
+                    sleep 2
+
+                    # Supervisor 停止后，清理 wrapper 脚本的残留进程
+                    local wrapper_script="$HOME/supervisor/${plugin_name}.sh"
+                    if [ -f "$wrapper_script" ]; then
+                        local wrapper_pids=$(pgrep -f "$wrapper_script" 2>/dev/null || true)
+                        if [ -n "$wrapper_pids" ]; then
+                            log_info "  Killing wrapper processes: $wrapper_pids"
+                            for pid in $wrapper_pids; do
+                                pkill -9 -P "$pid" 2>/dev/null || true
+                                kill -9 "$pid" 2>/dev/null || true
+                            done
+                            sleep 1
+                        fi
+                    fi
+                fi
+            fi
+        fi
+
+        # 3. 清理插件锁文件（如果存在）
+        # 通用锁文件路径模式：~/.{plugin_name}/*.lock
+        local lock_dir="$HOME/.${plugin_name}"
+        if [ -d "$lock_dir" ]; then
+            local lock_files=$(find "$lock_dir" -name "*.lock" -type f 2>/dev/null || true)
+            if [ -n "$lock_files" ]; then
+                log_info "  Removing stale lock files in $lock_dir"
+                echo "$lock_files" | while read -r lock_file; do
+                    rm -f "$lock_file"
+                done
+            fi
+        fi
+
+        # 4. 额外等待，确保资源完全释放
+        sleep 1
+
         # 查找第一个非注释行作为命令名
         local cmd_name=""
         while IFS= read -r line; do
@@ -933,11 +1019,10 @@ start_plugin_service() {
 # Auto-generated wrapper script for ${plugin_name}
 # Generated at: $(date -Iseconds)
 
-set -e
+# ⚠️ 不使用 set -e，避免脚本失败
 
+exec $service_cmd
 SCRIPT_HEADER
-
-            echo "$service_cmd" >> "$script_file"
             chmod +x "$script_file"
             chown agent:agent "$script_file" 2>/dev/null || true
             local actual_cmd="$script_file"
@@ -950,10 +1035,11 @@ directory=$HOME
 user=agent
 autostart=true
 autorestart=${autorestart}
-startretries=1
-startsecs=0
+startretries=3
+startsecs=2
 stopwaitsecs=5
-stopsignal=TERM
+stopsignal=KILL
+killasgroup=true
 stdout_logfile=${log_file}
 stdout_logfile_maxbytes=10MB
 stdout_logfile_backups=3
@@ -1026,7 +1112,7 @@ EOF
 # Auto-generated oneshot script for ${plugin_name}
 # Generated at: $(date -Iseconds)
 
-set -e
+# ⚠️ 不使用 set -e，避免脚本失败
 
 SCRIPT_HEADER
 
@@ -1055,34 +1141,238 @@ SCRIPT_HEADER
 # 停止插件服务
 stop_plugin_service() {
     local plugin_name="$1"
+    local plugin_file="$PLUGINS_DEF_DIR/$plugin_name/plugin.yaml"
 
-    if ! pgrep -x "supervisord" > /dev/null; then
-        log_warning "Supervisord is not running"
+    if [ ! -f "$plugin_file" ]; then
+        log_warning "Plugin definition not found: $plugin_name"
         return 1
     fi
 
-    local status=$(supervisorctl -c "$SUPERVISOR_CONF" status "$plugin_name" 2>/dev/null | awk '{print $2}')
-    if [ -z "$status" ]; then
-        log_warning "Service not found: $plugin_name"
-        return 0
+    # 检查服务类型（daemon 还是 oneshot）
+    local is_daemon=$(sed -n '/^service:/,/^[a-z]/p' "$plugin_file" | grep 'daemon:' | sed 's/.*daemon: *//' | tr -d ' "')
+    is_daemon=${is_daemon:-true}  # 默认是 daemon
+
+    # 1. 对于 daemon 服务，优先使用 Supervisor 停止
+    # ⚠️ 注意：daemon 服务不使用 stop_command，由 Supervisor 管理停止
+    if [ "$is_daemon" = "true" ] && pgrep -x "supervisord" > /dev/null; then
+        local status=$(supervisorctl -c "$SUPERVISOR_CONF" status "$plugin_name" 2>/dev/null | awk '{print $2}')
+        if [ -n "$status" ] && [ "$status" != "STOPPED" ] && [ "$status" != "EXITED" ]; then
+            log_info "Stopping service: $plugin_name (Supervisor daemon)"
+            # supervisorctl stop 会：
+            # 1. 发送 SIGTERM 信号
+            # 2. 等待 stopwaitsecs (10 秒)
+            # 3. 如果还在，发送 SIGKILL
+            # 4. 杀死整个进程组 (killasgroup=true)
+            supervisorctl -c "$SUPERVISOR_CONF" stop "$plugin_name" > /dev/null 2>&1
+            
+            # 循环等待进程停止（最多 10 秒）
+            local wait_count=0
+            while [ $wait_count -lt 10 ]; do
+                sleep 1
+                local new_status=$(supervisorctl -c "$SUPERVISOR_CONF" status "$plugin_name" 2>/dev/null | awk '{print $2}')
+                if [ "$new_status" = "STOPPED" ] || [ "$new_status" = "EXITED" ]; then
+                    log_success "Service stopped: $plugin_name"
+                    return 0
+                elif [ "$new_status" = "FATAL" ]; then
+                    log_error "Service failed to stop: $plugin_name ($new_status)"
+                    return 1
+                fi
+                ((wait_count++))
+            done
+            
+            # 超时警告
+            log_warning "Service stop timeout: $plugin_name (may still be stopping)"
+            return 0
+        else
+            log_info "Service already stopped: $plugin_name ($status)"
+            return 0
+        fi
     fi
 
-    log_info "Stopping service: $plugin_name"
-    supervisorctl -c "$SUPERVISOR_CONF" stop "$plugin_name" > /dev/null 2>&1
-    log_success "Service stopped: $plugin_name"
+    # 2. 对于 oneshot 服务，使用自定义 stop_command
+    local stop_cmd=$(get_yaml_field_multiline "$plugin_file" "service" "stop_command")
+    if [ -n "$stop_cmd" ] && [ "$is_daemon" = "false" ]; then
+        log_info "Stopping service for $plugin_name (custom stop_command)..."
+        
+        # 创建临时脚本执行
+        local script_file="$HOME/supervisor/${plugin_name}_stop.sh"
+        cat > "$script_file" << EOF
+#!/bin/bash
+# ⚠️ 不使用 set -e
+$stop_cmd
+EOF
+        chmod +x "$script_file"
+        
+        if "$script_file"; then
+            log_success "Service stopped: $plugin_name"
+            rm -f "$script_file"
+            return 0
+        else
+            log_error "Failed to stop service: $plugin_name"
+            rm -f "$script_file"
+            return 1
+        fi
+    fi
+
+    # 3. Fallback: 尝试通过进程名停止
+    local service_cmd=$(get_yaml_field_multiline "$plugin_file" "service" "command")
+    if [ -n "$service_cmd" ]; then
+        log_info "Stopping processes for $plugin_name (fallback)..."
+        local stopped=0
+        
+        # 根据命令名停止进程
+        if echo "$service_cmd" | grep -q "code-server"; then
+            pkill -f "code-server" 2>/dev/null && stopped=1
+        elif echo "$service_cmd" | grep -q "copaw app"; then
+            pkill -f "copaw" 2>/dev/null && stopped=1
+        elif echo "$service_cmd" | grep -q "ttyd"; then
+            pkill -f "ttyd" 2>/dev/null && stopped=1
+        elif echo "$service_cmd" | grep -q "openclaw"; then
+            pkill -f "openclaw" 2>/dev/null && stopped=1
+        elif echo "$service_cmd" | grep -q "hiclaw"; then
+            docker stop hiclaw-manager 2>/dev/null && stopped=1
+        elif echo "$service_cmd" | grep -q "start-novnc"; then
+            ~/tools/novnc-scripts/stop-novnc.sh 2>/dev/null && stopped=1
+        elif echo "$service_cmd" | grep -q "board"; then
+            pkill -f "board-server" 2>/dev/null && stopped=1
+        elif echo "$service_cmd" | grep -q "Skills-Manager\|AppRun"; then
+            pkill -f "AppRun" 2>/dev/null && stopped=1
+        fi
+        
+        if [ $stopped -eq 1 ]; then
+            log_success "Service stopped: $plugin_name"
+            return 0
+        fi
+    fi
+
+    log_warning "No stop method found for $plugin_name"
+    return 0
 }
 
 # 重启插件服务
 restart_plugin_service() {
     local plugin_name="$1"
+    local plugin_file="$PLUGINS_DEF_DIR/$plugin_name/plugin.yaml"
 
-    if ! pgrep -x "supervisord" > /dev/null; then
-        log_warning "Supervisord is not running"
+    if [ ! -f "$plugin_file" ]; then
+        log_warning "Plugin definition not found: $plugin_name"
         return 1
     fi
 
-    log_info "Restarting service: $plugin_name"
-    supervisorctl -c "$SUPERVISOR_CONF" restart "$plugin_name" > /dev/null 2>&1
+    # 检查服务类型（daemon 还是 oneshot）
+    local is_daemon=$(sed -n '/^service:/,/^[a-z]/p' "$plugin_file" | grep 'daemon:' | sed 's/.*daemon: *//' | tr -d ' "')
+    is_daemon=${is_daemon:-true}  # 默认是 daemon
+
+    # 1. 对于 daemon 服务且使用 Supervisor，使用 supervisorctl restart
+    # ⚠️ 注意：daemon 服务不使用 restart_command，由 Supervisor 管理重启
+    if [ "$is_daemon" = "true" ] && pgrep -x "supervisord" > /dev/null; then
+        local status=$(supervisorctl -c "$SUPERVISOR_CONF" status "$plugin_name" 2>/dev/null | awk '{print $2}')
+        if [ -n "$status" ]; then
+            log_info "Restarting service: $plugin_name (Supervisor daemon)"
+            
+            # ✅ 先完全停止（等待进程完全退出）
+            log_info "Stopping service: $plugin_name..."
+
+            # 获取停止前的 PID（用于后续清理）
+            local pre_stop_pid=$(supervisorctl -c "$SUPERVISOR_CONF" status "$plugin_name" 2>/dev/null | grep -oP 'pid \K\d+' || true)
+            log_info "  Pre-stop PID: $pre_stop_pid"
+
+            supervisorctl -c "$SUPERVISOR_CONF" stop "$plugin_name" > /dev/null 2>&1
+
+            # 循环等待进程完全停止（最多 15 秒）
+            local wait_count=0
+            while [ $wait_count -lt 15 ]; do
+                sleep 1
+                local current_status=$(supervisorctl -c "$SUPERVISOR_CONF" status "$plugin_name" 2>/dev/null | awk '{print $2}')
+                if [ "$current_status" = "STOPPED" ] || [ "$current_status" = "EXITED" ]; then
+                    log_info "Service stopped: $plugin_name"
+                    break
+                fi
+                ((wait_count++))
+            done
+
+            # ✅ 强制杀死残留进程（如果有）
+            # 清理停止前的 PID 及其子进程（可能是孤儿进程）
+            if [ -n "$pre_stop_pid" ] && kill -0 "$pre_stop_pid" 2>/dev/null; then
+                log_info "  Killing old process: $pre_stop_pid"
+                kill -9 "$pre_stop_pid" 2>/dev/null || true
+                pkill -9 -P "$pre_stop_pid" 2>/dev/null || true
+                sleep 1
+            fi
+
+            # 清理 wrapper 脚本的残留进程
+            local wrapper_script="$HOME/supervisor/${plugin_name}.sh"
+            if [ -f "$wrapper_script" ]; then
+                local wrapper_pids=$(pgrep -f "$wrapper_script" 2>/dev/null || true)
+                if [ -n "$wrapper_pids" ]; then
+                    log_info "  Killing wrapper processes: $wrapper_pids"
+                    for pid in $wrapper_pids; do
+                        # 排除刚获取的 pre_stop_pid，避免重复杀死
+                        if [ "$pid" != "$pre_stop_pid" ]; then
+                            pkill -9 -P "$pid" 2>/dev/null || true
+                            kill -9 "$pid" 2>/dev/null || true
+                        fi
+                    done
+                    sleep 1
+                fi
+            fi
+            sleep 2
+            
+            # ✅ 然后启动新进程
+            log_info "Starting service: $plugin_name..."
+            supervisorctl -c "$SUPERVISOR_CONF" start "$plugin_name" > /dev/null 2>&1
+            
+            # 循环等待启动（最多 10 秒）
+            wait_count=0
+            while [ $wait_count -lt 10 ]; do
+                sleep 1
+                local new_status=$(supervisorctl -c "$SUPERVISOR_CONF" status "$plugin_name" 2>/dev/null | awk '{print $2}')
+                if [ "$new_status" = "RUNNING" ]; then
+                    log_success "Service restarted: $plugin_name"
+                    return 0
+                elif [ "$new_status" = "FATAL" ] || [ "$new_status" = "BACKOFF" ]; then
+                    log_error "Service failed to restart: $plugin_name ($new_status)"
+                    return 1
+                fi
+                ((wait_count++))
+            done
+            
+            # 超时但可能仍在启动
+            log_warning "Service restart timeout: $plugin_name (may still be starting)"
+            return 0
+        fi
+    fi
+
+    # 2. 对于 oneshot 服务，使用自定义 restart_command
+    local restart_cmd=$(get_yaml_field_multiline "$plugin_file" "service" "restart_command")
+    if [ -n "$restart_cmd" ] && [ "$is_daemon" = "false" ]; then
+        log_info "Restarting service for $plugin_name (custom restart_command)..."
+        
+        local script_file="$HOME/supervisor/${plugin_name}_restart.sh"
+        cat > "$script_file" << EOF
+#!/bin/bash
+# ⚠️ 不使用 set -e
+$restart_cmd
+EOF
+        chmod +x "$script_file"
+        
+        if "$script_file"; then
+            log_success "Service restarted: $plugin_name"
+            rm -f "$script_file"
+            return 0
+        else
+            log_error "Failed to restart service: $plugin_name"
+            rm -f "$script_file"
+            return 1
+        fi
+    fi
+
+    # 3. 默认：先停止再启动
+    log_info "Restarting service: $plugin_name (stop + start)"
+    stop_plugin_service "$plugin_name"
+    sleep 2
+    start_plugin_service "$plugin_name"
+    
     log_success "Service restarted: $plugin_name"
 }
 
@@ -1142,7 +1432,7 @@ service_status() {
     fi
 }
 
-# 启动所有已启用插件的服务
+# 启动所有已启用插件的服务（容错模式 + 拓扑排序）
 start_all_services() {
     log_info "Starting plugin services..."
 
@@ -1154,40 +1444,109 @@ start_all_services() {
 
     local enabled_plugins=$(grep -B1 'enabled: true' "$PLUGINS_CONFIG" | grep 'name:' | sed 's/.*name:[[:space:]]*//' | tr -d ' ')
 
-    local ordered_plugins=""
+    if [ -z "$enabled_plugins" ]; then
+        log_warning "No enabled plugins found in config"
+        return 0
+    fi
 
-    while IFS= read -r plugin_name; do
+    # 拓扑排序：确保依赖先启动
+    log_info "Sorting plugins by dependencies..."
+    local sorted_plugins=$(topological_sort_plugins "$enabled_plugins")
+    
+    log_info "Starting services in order: $sorted_plugins"
+    
+    local failed_services=()
+    local success_count=0
+    local fail_count=0
+
+    # 启动服务（容错模式）
+    for plugin_name in $sorted_plugins; do
         if [ -n "$plugin_name" ]; then
-            local plugin_file="$PLUGINS_DEF_DIR/$plugin_name/plugin.yaml"
-            local deps=$(sed -n '/^depends:/,/^[a-z]/p' "$plugin_file" 2>/dev/null | grep -E '^\s+-' | sed 's/^\s*- //')
-
-            local is_depended=false
-            while IFS= read -r other_plugin; do
-                if [ -n "$other_plugin" ] && [ "$other_plugin" != "$plugin_name" ]; then
-                    local other_file="$PLUGINS_DEF_DIR/$other_plugin/plugin.yaml"
-                    local other_deps=$(sed -n '/^depends:/,/^[a-z]/p' "$other_file" 2>/dev/null | grep -E '^\s+-' | sed 's/^\s*- //')
-                    if echo "$other_deps" | grep -q "$plugin_name"; then
-                        is_depended=true
-                        break
-                    fi
-                fi
-            done <<< "$enabled_plugins"
-
-            if [ "$is_depended" = true ]; then
-                ordered_plugins="$plugin_name $ordered_plugins"
+            log_info "Starting service: $plugin_name"
+            if start_plugin_service "$plugin_name"; then
+                ((success_count++))
             else
-                ordered_plugins="$ordered_plugins $plugin_name"
+                ((fail_count++))
+                failed_services+=("$plugin_name")
+                log_warning "Failed to start service: $plugin_name"
+                # 继续启动其他服务，不因单个失败而停止
             fi
-        fi
-    done <<< "$enabled_plugins"
-
-    for plugin_name in $ordered_plugins; do
-        if [ -n "$plugin_name" ]; then
-            start_plugin_service "$plugin_name"
         fi
     done
 
-    log_success "Plugin services started"
+    log_info "Service startup summary: $success_count succeeded, $fail_count failed"
+    
+    if [ ${#failed_services[@]} -gt 0 ]; then
+        log_warning "Failed services: ${failed_services[*]}"
+        log_info "You can retry failed services individually with: agentbox start-service <plugin-name>"
+    fi
+
+    log_success "Service startup completed"
+    return 0  # 总是返回成功，避免容器重启
+}
+
+# 拓扑排序插件依赖
+# 输入：插件列表（空格分隔）
+# 输出：排序后的插件列表（依赖在前）
+topological_sort_plugins() {
+    local plugins="$1"
+    
+    # 使用关联数组存储依赖关系
+    declare -A deps_map
+    declare -A in_degree
+    declare -a result
+    declare -a queue
+    
+    # 初始化
+    for plugin in $plugins; do
+        in_degree[$plugin]=0
+        deps_map[$plugin]=""
+    done
+    
+    # 构建依赖图
+    for plugin in $plugins; do
+        local plugin_file="$PLUGINS_DEF_DIR/$plugin/plugin.yaml"
+        if [ -f "$plugin_file" ]; then
+            local plugin_deps=$(sed -n '/^depends:/,/^[a-z]/p' "$plugin_file" 2>/dev/null | grep -E '^\s+-' | sed 's/^\s*- //' | tr '\n' ' ')
+            for dep in $plugin_deps; do
+                if [ -n "$dep" ] && [[ " $plugins " == *" $dep "* ]]; then
+                    # dep → plugin (dep 必须在 plugin 之前)
+                    deps_map[$dep]="${deps_map[$dep]} $plugin"
+                    ((in_degree[$plugin]++))
+                fi
+            done
+        fi
+    done
+    
+    # 将所有入度为 0 的节点加入队列
+    for plugin in $plugins; do
+        if [ "${in_degree[$plugin]}" -eq 0 ]; then
+            queue+=("$plugin")
+        fi
+    done
+    
+    # Kahn 算法
+    while [ ${#queue[@]} -gt 0 ]; do
+        local current="${queue[0]}"
+        queue=("${queue[@]:1}")
+        result+=("$current")
+        
+        # 减少相邻节点的入度
+        for neighbor in ${deps_map[$current]}; do
+            ((in_degree[$neighbor]--))
+            if [ "${in_degree[$neighbor]}" -eq 0 ]; then
+                queue+=("$neighbor")
+            fi
+        done
+    done
+    
+    # 检查是否有环
+    if [ ${#result[@]} -ne $(echo $plugins | wc -w) ]; then
+        log_warning "Circular dependency detected! Using original order."
+        echo "$plugins"
+    else
+        echo "${result[*]}"
+    fi
 }
 
 # ===========================================

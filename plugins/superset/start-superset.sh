@@ -1,18 +1,18 @@
 #!/bin/bash
-# Skills Manager 应用启动脚本
-# 使用独立的 Xvfb 显示 (:99)，不依赖 xvfb 插件
+# Superset 应用启动脚本
+# 使用独立的 Xvfb 显示 (:100)，避免与其他应用共享桌面
 
 # 配置独立端口
-SKILLS_MANAGER_NOVNC_PORT=${SKILLS_MANAGER_NOVNC_PORT:-6080}
-SKILLS_MANAGER_VNC_PORT=${SKILLS_MANAGER_VNC_PORT:-5900}
-DISPLAY_NUM=99  # 使用独立的 Xvfb 显示
+SUPERSET_NOVNC_PORT=${SUPERSET_NOVNC_PORT:-6081}
+SUPERSET_VNC_PORT=${SUPERSET_VNC_PORT:-5901}
+DISPLAY_NUM=100  # 使用独立的 Xvfb 显示，避免与其他应用共享桌面
 
 # 设置环境变量
 export DISPLAY=:${DISPLAY_NUM}
 export GDK_BACKEND=x11
 export NO_AT_BRIDGE=1
 
-# 检查 Xvfb 是否运行在 :99
+# 检查 Xvfb 是否运行在 :100
 if ! pgrep -f "Xvfb :${DISPLAY_NUM}" > /dev/null 2>&1; then
     echo "WARNING: Xvfb not running on :${DISPLAY_NUM}, starting one..."
     mkdir -p /tmp/.X11-unix
@@ -35,15 +35,15 @@ xhost +local: 2>/dev/null || true
 
 # 检查 AppImage 是否已提取
 SQUASHFS_DIR=""
-if [ -d ~/tools/appimages/Skills-Manager/squashfs-root ]; then
-    SQUASHFS_DIR=~/tools/appimages/Skills-Manager/squashfs-root
+if [ -d ~/tools/appimages/Superset/squashfs-root ]; then
+    SQUASHFS_DIR=~/tools/appimages/Superset/squashfs-root
 elif [ -d ~/tools/appimages/squashfs-root ]; then
     SQUASHFS_DIR=~/tools/appimages/squashfs-root
 fi
 
 if [ -z "$SQUASHFS_DIR" ]; then
     echo "ERROR: Extracted AppImage not found"
-    echo "Please reinstall the plugin with: agentbox install skills-manager --force"
+    echo "Please reinstall the plugin with: agentbox install superset --force"
     exit 1
 fi
 
@@ -56,55 +56,56 @@ if [ -f "$SQUASHFS_DIR/AppRun.wrapped" ]; then
 fi
 
 # 启动独立的 x11vnc 实例（共享 DISPLAY 但不同端口）
-echo "Starting x11vnc for Skills Manager on port ${SKILLS_MANAGER_VNC_PORT}..."
+echo "Starting x11vnc for Superset on port ${SUPERSET_VNC_PORT}..."
 # 先清理可能占用端口的旧进程
-pkill -f "x11vnc.*${SKILLS_MANAGER_VNC_PORT}" 2>/dev/null || true
+pkill -f "x11vnc.*${SUPERSET_VNC_PORT}" 2>/dev/null || true
 sleep 1
 # 启动 x11vnc，使用 -noxdamage 和 -noxfixes 避免 X11 扩展问题
-x11vnc -display :${DISPLAY_NUM} -forever -shared -rfbport ${SKILLS_MANAGER_VNC_PORT} -nopw -bg -noxdamage -noxfixes
+x11vnc -display :${DISPLAY_NUM} -forever -shared -rfbport ${SUPERSET_VNC_PORT} -nopw -bg -noxdamage -noxfixes
 sleep 2
 # 检查 x11vnc 是否成功启动
-if ! pgrep -f "x11vnc.*${SKILLS_MANAGER_VNC_PORT}" > /dev/null; then
-    echo "ERROR: Failed to start x11vnc on port ${SKILLS_MANAGER_VNC_PORT}"
+if ! pgrep -f "x11vnc.*${SUPERSET_VNC_PORT}" > /dev/null; then
+    echo "ERROR: Failed to start x11vnc on port ${SUPERSET_VNC_PORT}"
     # 尝试使用 -display WAIT: 模式重试
-    x11vnc -display WAIT:${DISPLAY_NUM} -forever -shared -rfbport ${SKILLS_MANAGER_VNC_PORT} -nopw -bg -noxdamage -noxfixes
+    x11vnc -display WAIT:${DISPLAY_NUM} -forever -shared -rfbport ${SUPERSET_VNC_PORT} -nopw -bg -noxdamage -noxfixes
     sleep 2
-    if ! pgrep -f "x11vnc.*${SKILLS_MANAGER_VNC_PORT}" > /dev/null; then
+    if ! pgrep -f "x11vnc.*${SUPERSET_VNC_PORT}" > /dev/null; then
         echo "ERROR: x11vnc still failed to start, check logs for details"
     fi
 fi
 
 # 启动独立的 noVNC 实例
-echo "Starting noVNC for Skills Manager on port ${SKILLS_MANAGER_NOVNC_PORT}..."
+echo "Starting noVNC for Superset on port ${SUPERSET_NOVNC_PORT}..."
 if command -v websockify &> /dev/null; then
-    websockify --web=/usr/share/novnc/ ${SKILLS_MANAGER_NOVNC_PORT} localhost:${SKILLS_MANAGER_VNC_PORT} &
+    websockify --web=/usr/share/novnc/ ${SUPERSET_NOVNC_PORT} localhost:${SUPERSET_VNC_PORT} &
 elif [ -f /usr/share/novnc/websockify/websockify.py ]; then
-    python3 /usr/share/novnc/websockify/websockify.py --web=/usr/share/novnc/ ${SKILLS_MANAGER_NOVNC_PORT} localhost:${SKILLS_MANAGER_VNC_PORT} &
+    python3 /usr/share/novnc/websockify/websockify.py --web=/usr/share/novnc/ ${SUPERSET_NOVNC_PORT} localhost:${SUPERSET_VNC_PORT} &
 else
     echo "ERROR: websockify not found"
     exit 1
 fi
 sleep 2
 
-# 启动 Skills Manager 应用
-echo "Starting Skills Manager..."
+# 启动 Superset 应用
+echo "Starting Superset..."
 
 # 设置 APPDIR 环境变量（AppRun 需要）
 export APPDIR="$SQUASHFS_DIR"
-# 在虚拟显示环境中启动应用
-$SQUASHFS_DIR/AppRun --no-sandbox 2>&1 | tee ~/logs/skills-manager-app.log &
+
+# 通过 AppRun 启动（AppRun 会设置正确的 PATH 和 LD_LIBRARY_PATH）
+"$SQUASHFS_DIR/AppRun" --no-sandbox 2>&1 | tee ~/logs/superset-app.log &
 APP_PID=$!
 
 sleep 3
-echo "Skills Manager started with PID $APP_PID!"
-echo "Access via noVNC: http://localhost:${SKILLS_MANAGER_NOVNC_PORT}/vnc.html"
+echo "Superset started with PID $APP_PID!"
+echo "Access via noVNC: http://localhost:${SUPERSET_NOVNC_PORT}/vnc.html"
 
 # 使用 trap 捕获退出信号
 cleanup() {
-    echo "Stopping Skills Manager..."
+    echo "Stopping Superset..."
     kill $APP_PID 2>/dev/null || true
-    pkill -f "x11vnc.*${SKILLS_MANAGER_VNC_PORT}" 2>/dev/null || true
-    pkill -f "websockify.*${SKILLS_MANAGER_NOVNC_PORT}" 2>/dev/null || true
+    pkill -f "x11vnc.*${SUPERSET_VNC_PORT}" 2>/dev/null || true
+    pkill -f "websockify.*${SUPERSET_NOVNC_PORT}" 2>/dev/null || true
     # 停止我们启动的 Xvfb 实例
     pkill -f "Xvfb :${DISPLAY_NUM}" 2>/dev/null || true
     exit 0
@@ -116,5 +117,5 @@ while kill -0 $APP_PID 2>/dev/null; do
     sleep 5
 done
 
-echo "Skills Manager stopped"
+echo "Superset stopped"
 exit 0

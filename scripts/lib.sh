@@ -362,28 +362,27 @@ process_plugin_env() {
 configure_mirrors() {
     log_info "Configuring mirror sources..."
 
+    # 设置默认的镜像源（如果环境变量未设置）
+    : "${NPM_REGISTRY:=https://registry.npmmirror.com}"
+    : "${PNPM_REGISTRY:=https://registry.npmmirror.com}"
+    : "${PIP_INDEX_URL:=https://mirrors.aliyun.com/pypi/simple/}"
+    : "${PIP_TRUSTED_HOST:=mirrors.aliyun.com}"
+    : "${GOPROXY:=https://goproxy.cn,direct}"
+
     # NPM 镜像源配置
-    if [ -n "$NPM_REGISTRY" ]; then
-        npm config set registry "$NPM_REGISTRY" -g 2>/dev/null || true
-        log_success "NPM registry: $NPM_REGISTRY"
-    fi
+    npm config set registry "$NPM_REGISTRY" -g 2>/dev/null || true
+    log_success "NPM registry: $NPM_REGISTRY"
 
     # PNPM 镜像源配置
-    if [ -n "$PNPM_REGISTRY" ] && command -v pnpm &> /dev/null; then
+    if command -v pnpm &> /dev/null; then
         pnpm config set registry "$PNPM_REGISTRY" -g 2>/dev/null || true
         log_success "PNPM registry: $PNPM_REGISTRY"
-    elif [ -n "$NPM_REGISTRY" ] && command -v pnpm &> /dev/null; then
-        pnpm config set registry "$NPM_REGISTRY" -g 2>/dev/null || true
     fi
 
     # PIP 镜像源配置
-    if [ -n "$PIP_INDEX_URL" ]; then
-        pip3 config set global.index-url "$PIP_INDEX_URL" 2>/dev/null || true
-        if [ -n "$PIP_TRUSTED_HOST" ]; then
-            pip3 config set global.trusted-host "$PIP_TRUSTED_HOST" 2>/dev/null || true
-        fi
-        log_success "PIP index: $PIP_INDEX_URL"
-    fi
+    pip3 config set global.index-url "$PIP_INDEX_URL" 2>/dev/null || true
+    pip3 config set global.trusted-host "$PIP_TRUSTED_HOST" 2>/dev/null || true
+    log_success "PIP index: $PIP_INDEX_URL"
 
     # Go 代理配置
     if [ -n "$GOPROXY" ]; then

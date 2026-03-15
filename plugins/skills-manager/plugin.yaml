@@ -1,63 +1,171 @@
 # Skills Manager 插件定义
-# 依赖 novnc-base 基础服务，复用虚拟显示环境
+# 使用独立的 Xvfb 显示环境，不依赖 xvfb 插件
 name: skills-manager
 version: "1.1.5"
-description: Skills Manager - AI编程助手技能管理工具（通过浏览器访问）
+description: Skills Manager - AI 编程助手技能管理工具（通过浏览器访问）
 
 # 依赖要求
 requires:
   - curl
   - bash
 
-# 插件依赖（会自动安装和启动）
-depends:
-  - novnc-base
-
 # 安装命令
 install:
-  - mkdir -p ~/tools/appimages/Skills-Manager
-  - curl -fsSL -o ~/tools/appimages/Skills-Manager/Skills-Manager.AppImage https://github.com/jiweiyeah/Skills-Manager/releases/download/v1.1.5/Skills.Manager_1.1.5_amd64.AppImage
-  - chmod +x ~/tools/appimages/Skills-Manager/Skills-Manager.AppImage
-  # 提取 AppImage（Docker 容器没有 FUSE 支持）
-  - cd ~/tools/appimages/Skills-Manager && ./Skills-Manager.AppImage --appimage-extract 2>/dev/null || true
+  - |
+    set +e
+
+    log_info "Installing Skills Manager..."
+
+    # 创建目录
+    mkdir -p ~/tools/appimages/Skills-Manager
+    mkdir -p ~/.skills-manager ~/logs
+    rm -rf ~/tools/appimages/Skills-Manager/* 2>/dev/null || true
+
+    # 下载 AppImage
+    log_info "Downloading Skills Manager v1.1.5..."
+    curl -fsSL -o ~/tools/appimages/Skills-Manager/Skills-Manager.AppImage \
+      https://github.com/jiweiyeah/Skills-Manager/releases/download/v1.1.5/Skills.Manager_1.1.5_amd64.AppImage
+
+    # 设置权限
+    chmod +x ~/tools/appimages/Skills-Manager/Skills-Manager.AppImage
+
+    # 提取 AppImage（Docker 容器没有 FUSE 支持）
+    log_info "Extracting AppImage..."
+    cd ~/tools/appimages/Skills-Manager && ./Skills-Manager.AppImage --appimage-extract 2>/dev/null || true
+
+    # 修复解压后的权限问题（squashfs 提取后文件属于 root，需要给所有用户权限）
+    log_info "Fixing permissions..."
+    chmod -R 755 ~/tools/appimages/Skills-Manager/squashfs-root 2>/dev/null || true
+    chmod +x ~/tools/appimages/Skills-Manager/squashfs-root/AppRun 2>/dev/null || true
+    if [ -f ~/tools/appimages/Skills-Manager/squashfs-root/AppRun.wrapped ]; then
+      chmod +x ~/tools/appimages/Skills-Manager/squashfs-root/AppRun.wrapped 2>/dev/null || true
+    fi
+
+    # 复制启动脚本到可写目录
+    if [ -f /home/agent/plugins-config/skills-manager/start-skills-manager.sh ]; then
+      cp /home/agent/plugins-config/skills-manager/start-skills-manager.sh ~/tools/appimages/Skills-Manager/
+      chmod +x ~/tools/appimages/Skills-Manager/start-skills-manager.sh
+    fi
+
+    # 验证安装
+    if [ ! -f ~/tools/appimages/Skills-Manager/squashfs-root/AppRun ]; then
+      log_error "Installation failed: AppRun not found"
+      exit 1
+    fi
+
+    log_success "Skills Manager installed successfully"
+
+# 环境变量
+env:
+  SKILLS_MANAGER_NOVNC_PORT: export SKILLS_MANAGER_NOVNC_PORT=${SKILLS_MANAGER_NOVNC_PORT:-6080}
+  SKILLS_MANAGER_VNC_PORT: export SKILLS_MANAGER_VNC_PORT=${SKILLS_MANAGER_VNC_PORT:-5900}
 
 # 安装后配置
 post_install:
-  - mkdir -p ~/.skills-manager ~/logs
-  - cp /home/agent/plugins-config/skills-manager/start-skills-manager.sh ~/tools/appimages/Skills-Manager/
-  - chmod +x ~/tools/appimages/Skills-Manager/start-skills-manager.sh
+  - |
+    echo ""
+    echo "============================================"
+    echo "  Skills Manager 安装完成!"
+    echo "============================================"
+    echo ""
+    echo "访问地址：http://localhost:6080/vnc.html (独立 noVNC 实例)"
+    echo "安装目录：~/tools/appimages/Skills-Manager"
+    echo "配置目录：~/.skills-manager"
+    echo ""
+    echo "注意：使用独立 Xvfb 显示环境 (:99)"
+    echo "============================================"
+    echo ""
 
 # 需要持久化的目录
 volumes:
-  - ~/.skills-manager: Skills Manager配置和数据
-  - ~/tools/appimages/Skills-Manager: AppImage安装目录
+  - ~/.skills-manager: Skills Manager 配置和数据
+  - ~/tools/appimages/Skills-Manager: AppImage 安装目录
+
+# 服务配置（GUI 应用服务）
+service:
+  # 常驻服务，使用 Supervisor 管理
+  daemon: true
+  # 服务启动后自动启动
+  auto_start: true
+  # 服务崩溃后自动重启
+  restart: true
+  # 最大重启次数
+  max_restarts: 5
+  # 启动命令
+  command: /home/agent/tools/appimages/Skills-Manager/start-skills-manager.sh
 
 # 健康检查
 healthcheck:
   command: test -f ~/tools/appimages/Skills-Manager/squashfs-root/AppRun
 
-# 服务配置
-# 注意：此插件依赖 novnc-base 提供的虚拟显示环境
-# 启动顺序由 plugin-manager.sh 根据 depends 自动处理
-service:
-  auto_start: true
-  command: /home/agent/tools/appimages/Skills-Manager/start-skills-manager.sh
-  # 应用崩溃后重启
-  restart: true
-  max_restarts: 5
-
 # 卸载命令
 uninstall:
-  - pkill -f "Skills-Manager" 2>/dev/null || true
-  - rm -rf ~/tools/appimages/Skills-Manager
+  - |
+    set +e
+
+    log_info "Uninstalling Skills Manager..."
+
+    # 停止进程
+    pkill -f "Skills-Manager" 2>/dev/null || true
+    pkill -f "x11vnc.*5900" 2>/dev/null || true
+    pkill -f "websockify.*6080" 2>/dev/null || true
+
+    rm -rf ~/supervisor/skills-manager.conf 2>/dev/null || true
+    rm -rf ~/supervisor/skills-manager.sh 2>/dev/null || true
+
+    # 清理安装目录
+    rm -rf ~/tools/appimages/Skills-Manager 2>/dev/null || true
+
+    # ⚠️ 保留用户配置
+    # rm -rf ~/.skills-manager 2>/dev/null || true
+
+    log_success "Skills Manager uninstalled"
 
 # 更新命令
 update:
-  - pkill -f "Skills-Manager" 2>/dev/null || true
-  - rm -rf ~/tools/appimages/Skills-Manager
-  - mkdir -p ~/tools/appimages/Skills-Manager
-  - curl -fsSL -o ~/tools/appimages/Skills-Manager/Skills-Manager.AppImage https://github.com/jiweiyeah/Skills-Manager/releases/download/v1.1.5/Skills.Manager_1.1.5_amd64.AppImage
-  - chmod +x ~/tools/appimages/Skills-Manager/Skills-Manager.AppImage
-  - cd ~/tools/appimages/Skills-Manager && ./Skills-Manager.AppImage --appimage-extract 2>/dev/null || true
-  - cp /home/agent/plugins-config/skills-manager/start-skills-manager.sh ~/tools/appimages/Skills-Manager/
-  - chmod +x ~/tools/appimages/Skills-Manager/start-skills-manager.sh
+  - |
+    set +e
+
+    log_info "Updating Skills Manager..."
+
+    # 停止当前服务
+    pkill -f "Skills-Manager" 2>/dev/null || true
+    pkill -f "x11vnc.*5900" 2>/dev/null || true
+    pkill -f "websockify.*6080" 2>/dev/null || true
+
+    # 清理旧版本
+    rm -rf ~/tools/appimages/Skills-Manager 2>/dev/null || true
+
+    # 重新安装
+    mkdir -p ~/tools/appimages/Skills-Manager
+
+    log_info "Downloading Skills Manager v1.1.5..."
+    curl -fsSL -o ~/tools/appimages/Skills-Manager/Skills-Manager.AppImage \
+      https://github.com/jiweiyeah/Skills-Manager/releases/download/v1.1.5/Skills.Manager_1.1.5_amd64.AppImage
+
+    chmod +x ~/tools/appimages/Skills-Manager/Skills-Manager.AppImage
+
+    log_info "Extracting AppImage..."
+    cd ~/tools/appimages/Skills-Manager && ./Skills-Manager.AppImage --appimage-extract 2>/dev/null || true
+
+    # 修复解压后的权限问题（squashfs 提取后文件属于 root，需要给所有用户权限）
+    log_info "Fixing permissions..."
+    chmod -R 755 ~/tools/appimages/Skills-Manager/squashfs-root 2>/dev/null || true
+    chmod +x ~/tools/appimages/Skills-Manager/squashfs-root/AppRun 2>/dev/null || true
+    if [ -f ~/tools/appimages/Skills-Manager/squashfs-root/AppRun.wrapped ]; then
+      chmod +x ~/tools/appimages/Skills-Manager/squashfs-root/AppRun.wrapped 2>/dev/null || true
+    fi
+
+    # 复制启动脚本到可写目录
+    if [ -f /home/agent/plugins-config/skills-manager/start-skills-manager.sh ]; then
+      cp /home/agent/plugins-config/skills-manager/start-skills-manager.sh ~/tools/appimages/Skills-Manager/
+      chmod +x ~/tools/appimages/Skills-Manager/start-skills-manager.sh
+    fi
+
+    # 验证
+    if [ ! -f ~/tools/appimages/Skills-Manager/squashfs-root/AppRun ]; then
+      log_error "Update verification failed"
+      exit 1
+    fi
+
+    log_success "Skills Manager updated successfully"

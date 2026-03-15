@@ -2,37 +2,66 @@
 
 > 基于 Docker 的可插拔式 AI Agent 工具集成容器
 
-## 目录
-
-- [功能特性](#功能特性)
-- [快速开始](#快速开始)
-- [核心架构](#核心架构)
-- [插件管理](#插件管理)
-- [可用插件](#可用插件)
-- [Web 服务](#web-服务)
-- [Docker 支持](#docker-支持)
-- [配置参考](#配置参考)
-- [开发指南](#开发指南)
+[![Version](https://img.shields.io/badge/version-1.0.0-blue.svg)](https://github.com/your-org/agent-box)
+[![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
 ---
 
-## 功能特性
+## 📋 目录
 
-| 特性 | 描述 |
+- [核心特性](#-核心特性)
+- [快速开始](#-快速开始)
+- [可用插件](#-可用插件)
+- [服务管理](#-服务管理)
+- [Web 服务访问](#-web-服务访问)
+- [架构说明](#-架构说明)
+- [配置参考](#-配置参考)
+- [开发指南](#-开发指南)
+- [故障排查](#-故障排查)
+
+---
+
+## 🚀 核心特性
+
+### 插件化架构
+
+| 特性 | 说明 |
 |-----|------|
-| **可插拔架构** | 通过 YAML 配置文件动态管理 AI Agent 工具 |
-| **完整持久化** | 数据、工具包、工作目录、缓存全部持久化存储 |
+| **可插拔设计** | 通过 YAML 配置文件动态管理 16+ AI Agent 工具 |
+| **完整生命周期** | 支持安装、卸载、更新、启动、停止、重启 |
+| **依赖管理** | 自动处理插件依赖关系和启动顺序 |
+| **容错启动** | 单个插件失败不影响其他插件和容器运行 |
+
+### 数据持久化
+
+| 类型 | 路径 | 说明 |
+|-----|------|------|
+| **工具包** | `/home/agent/tools` | npm/pip 全局包 |
+| **工作目录** | `/home/agent/workspace` | 用户工作区 |
+| **缓存** | `/home/agent/cache` | 模型缓存、临时文件 |
+| **配置** | `/home/agent/.config` | 应用配置 |
+| **日志** | `/home/agent/logs` | 服务日志 |
+| **插件数据** | `/home/agent/plugins-data` | 插件隔离数据 |
+
+### 服务管理
+
+- **Supervisor 守护进程** - 自动重启崩溃的服务
+- **Web Dashboard** - 统一的服务入口面板
+- **CLI 工具** - `agentbox` 命令管理所有插件
+- **健康检查** - 实时监控服务状态
+
+### 高级功能
+
+| 功能 | 说明 |
+|-----|------|
 | **宿主机共享** | `host-share` 目录实现宿主机与容器间文件共享 |
-| **服务管理** | 内置 Supervisor 管理后台服务进程 |
-| **CLI 工具** | 提供 `agentbox` 命令管理插件的安装、卸载、更新 |
-| **镜像加速** | 支持 NPM/PIP/Go/GitHub 等镜像源配置 |
 | **Docker 支持** | 支持在容器内操作宿主机 Docker |
-| **实时状态** | Dashboard 实时检测服务运行状态 |
+| **镜像加速** | 支持 NPM/PIP/Go/GitHub 等镜像源配置 |
 | **安全隔离** | 非 root 用户运行，最小权限原则 |
 
 ---
 
-## 快速开始
+## 🎯 快速开始
 
 ### 1. 环境准备
 
@@ -73,123 +102,54 @@ docker exec -it agentbox bash
 
 ---
 
-## 核心架构
+## 📦 可用插件
 
-### 目录结构
+### CLI 工具 (8 个)
 
-```
-agent-box/
-├── docker-compose.yml          # Docker 编排配置
-├── Dockerfile                  # 镜像构建文件
-├── .env.example                # 环境变量模板
-├── .gitignore                  # Git 忽略配置 (包含 host-share)
-├── config/
-│   └── plugins.yaml            # 插件启用配置
-├── scripts/
-│   ├── entrypoint.sh           # 容器入口脚本
-│   └── plugin-manager.sh       # 插件管理 CLI (agentbox)
-├── plugins/                    # 插件定义目录
-│   ├── board/                  # Dashboard 服务
-│   ├── claude-code/            # Claude Code CLI
-│   ├── qwen-code/              # 通义千问 CLI
-│   ├── opencode/               # OpenCode CLI
-│   ├── iflow/                  # iFlow CLI
-│   ├── openclaw/               # OpenClaw 网关
-│   ├── vscode-server/          # VS Code Server
-│   ├── web-terminal/           # Web 终端
-│   ├── skills-manager/         # 技能管理器
-│   ├── novnc-base/             # noVNC 基础服务
-│   ├── kilocode/               # Kilocode CLI
-│   ├── cursor-cli/             # Cursor CLI
-│   ├── codex/                  # Codex CLI
-│   ├── copaw/                  # CoPaw 网关
-│   ├── docker/                 # Docker CLI
-│   └── hiclaw/                 # HiClaw AI Agent 平台
-├── host-share/                 # 宿主机共享目录 (与容器内 /host-share 映射)
-└── data/                       # 持久化数据目录
-    ├── tools/                  # 工具包
-    ├── workspace/              # 工作目录
-    ├── cache/                  # 缓存文件
-    ├── logs/                   # 服务日志
-    └── plugins-data/           # 插件隔离数据
-```
+通过命令行使用，无需常驻服务。
 
-### 启动流程
+| 插件 | 命令 | 描述 | API Key |
+|-----|------|------|---------|
+| **claude-code** | `claude` | Anthropic 官方 AI 编程助手 | `ANTHROPIC_API_KEY` |
+| **cursor-cli** | `agent` | Cursor AI 编程助手 | - |
+| **codex** | `codex` | OpenAI 官方 AI 编程助手 | `OPENAI_API_KEY` |
+| **qwen-code** | `qwen` | 阿里云通义千问 AI 编程助手 | `DASHSCOPE_API_KEY` |
+| **opencode** | `opencode` | 开源 AI 编程助手 | `OPENAI_API_KEY` |
+| **kilocode** | `kilo` | Kilocode AI 编程助手 | `KILOCODE_API_KEY` |
+| **iflow** | `iflow` | iFlow AI 编程助手 | `IFLOW_API_KEY` |
+| **docker** | `docker` | Docker 容器管理工具 | - |
 
-```
-容器启动 (root)
-    │
-    ├── 初始化环境目录
-    ├── 配置 Docker TCP 连接
-    │
-    └── 切换到 agent 用户 (gosu)
-            │
-            ├── 配置镜像源 (NPM/PIP/Go)
-            ├── 启动 Supervisor 守护进程
-            ├── 恢复插件符号链接
-            ├── 安装启用的插件
-            └── 启动插件服务
-```
+### Web 服务 (8 个)
 
-### 持久化映射
+通过浏览器访问，常驻后台服务。
 
-| 容器路径 | 用途 |
-|---------|------|
-| `/home/agent/tools` | npm/pip 全局包 |
-| `/home/agent/workspace` | 工作目录 |
-| `/home/agent/cache` | 模型缓存、临时文件 |
-| `/home/agent/.config` | 配置文件 |
-| `/home/agent/logs` | 服务日志 |
-| `/home/agent/plugins-data` | 插件隔离数据 |
-| `/host-share` | 宿主机共享目录 (映射到 `/host-share`) |
+| 插件 | 端口 | 访问地址 | 说明 |
+|-----|------|----------|------|
+| **board** | 8888 | http://localhost:8888 | Dashboard - 统一服务入口 |
+| **vscode-server** | 8080 | http://localhost:8080 | 浏览器中的 VS Code IDE |
+| **web-terminal** | 7681 | http://localhost:7681 | 浏览器终端服务 |
+| **openclaw** | 18789 | http://localhost:18789 | 个人 AI 助手网关 |
+| **copaw** | 8088 | http://localhost:8088 | AgentScope AI 助手网关 |
+| **clawpanel** | 1420 | http://localhost:1420 | OpenClaw 可视化管理面板（纯 Web） |
+| **skills-manager** | 6080 | http://localhost:6080/vnc.html | AI 技能管理工具 (VNC) |
+| **novnc-base** | - | - | noVNC 基础显示服务 |
+
+### Docker 容器服务 (1 个)
+
+| 插件 | 端口 | 说明 |
+|-----|------|------|
+| **hiclaw** | 18080/18001/18088 | HiClaw AI Agent 平台（独立 Docker 容器） |
 
 ---
 
-## 宿主机共享目录 (host-share)
-
-`host-share` 目录提供了宿主机与容器之间的文件共享能力，主要用于以下场景：
-
-### 用途
-
-1. **HiClaw 数据共享** - HiClaw Manager 容器通过挂载此目录，实现与 AgentBox 容器的数据交换
-2. **文件传递** - 在宿主机和容器之间传递文件
-3. **配置共享** - 存放需要在多个容器间共享的配置文件
-
-### 目录映射
-
-| 宿主机路径 | 容器内路径 | 用途 |
-|-----------|-----------|------|
-| `./host-share` | `/host-share` | AgentBox 容器共享目录 |
-| `/host-share` | `/host-share` | HiClaw Manager 容器共享目录 |
-
-### 配置说明
-
-- **AgentBox 容器**: 通过 `docker-compose.yml` 中的 volumes 配置自动挂载
-- **HiClaw 容器**: 通过 `plugins/hiclaw/plugin.yaml` 中的 `-v /host-share:/host-share` 挂载
-- **.gitignore**: `host-share` 目录已被加入 `.gitignore`，避免提交用户数据
-
-### 使用示例
-
-```bash
-# 宿主机访问共享目录
-cd host-share
-
-# 容器内访问共享目录
-docker exec -it agentbox bash
-cd /host-share
-
-# HiClaw 中访问共享目录
-docker exec -it hiclaw-manager bash
-cd /host-share
-```
-
----
-
-## 插件管理
+## 🔧 服务管理
 
 ### CLI 命令
 
 ```bash
+# 进入容器
+docker exec -it agentbox bash
+
 # 查看帮助
 agentbox help
 
@@ -200,7 +160,7 @@ agentbox list
 agentbox install <plugin-name>
 agentbox install <plugin-name> --force    # 强制重装
 
-# 批量安装
+# 批量安装（容错模式）
 agentbox install-all
 agentbox install-all --force
 
@@ -217,10 +177,10 @@ agentbox status
 agentbox restore-links
 ```
 
-### 服务管理
+### 服务控制
 
 ```bash
-# 启动所有服务
+# 启动所有服务（容错模式）
 agentbox start-services
 
 # 单个服务管理
@@ -233,7 +193,7 @@ agentbox service-status <name>
 agentbox service-status
 ```
 
-### 镜像源管理
+### 镜像源配置
 
 ```bash
 # 查看当前配置
@@ -248,102 +208,113 @@ agentbox set-mirror github https://mirror.ghproxy.com/
 
 ---
 
-## 可用插件
-
-### CLI 工具 (命令行使用)
-
-| 插件 | 命令 | 描述 | API Key |
-|-----|------|------|---------|
-| claude-code | `claude` | Anthropic 官方 AI 编程助手 | `ANTHROPIC_API_KEY` |
-| qwen-code | `qwen` | 阿里云通义千问 AI 编程助手 | `DASHSCOPE_API_KEY` |
-| opencode | `opencode` | 开源 AI 编程助手 | `OPENAI_API_KEY` |
-| iflow | `iflow` | iFlow AI 编程助手 | `IFLOW_API_KEY` |
-| kilocode | `kilo` | Kilocode AI 编程助手 | `KILOCODE_API_KEY` |
-| cursor-cli | `agent` | Cursor AI 编程助手 | - |
-| codex | `codex` | OpenAI 官方 AI 编程助手 | `OPENAI_API_KEY` |
-| docker | `docker` | Docker 容器管理工具 | - |
-
-### Web 服务 (浏览器访问)
-
-| 插件 | 端口 | 容器内端口 | 描述 |
-|-----|------|------------|------|
-| board | ${BOARD_PORT:-8888} | 8888 | Dashboard - 统一服务入口面板 |
-| vscode-server | ${VSCODE_PORT:-8080} | 8080 | 浏览器中的 VS Code IDE |
-| web-terminal | ${WEB_TERMINAL_PORT:-7681} | 7681 | 浏览器终端服务 |
-| openclaw | ${OPENCLAW_PORT:-18789} | 18789 | 个人 AI 助手网关 |
-| copaw | ${COPAW_PORT:-8088} | 8088 | AgentScope AI 助手网关 |
-| skills-manager | ${NOVNC_PORT:-6080} | 6080 | AI 技能管理工具 (VNC) |
-| hiclaw-gateway | ${HICLAW_GATEWAY_PORT:-18080} | 8080 | HiClaw Higress 网关 |
-| hiclaw-console | ${HICLAW_CONSOLE_PORT:-18001} | 8001 | HiClaw 管理控制台 |
-| hiclaw-element | ${HICLAW_ELEMENT_PORT:-18088} | 8088 | HiClaw Matrix 消息客户端 |
-
-### 基础服务
-
-| 插件 | 描述 |
-|-----|------|
-| novnc-base | noVNC 基础服务，提供虚拟显示环境 |
-
-### 插件依赖共享目录
-
-| 插件 | 共享目录用途 |
-|-----|-------------|
-| hiclaw | `/host-share` - HiClaw Manager 与宿主机文件交换 |
-
----
-
-## Web 服务
+## 🌐 Web 服务访问
 
 ### Dashboard
 
-访问地址: **http://localhost:${BOARD_PORT:-8888}** (默认 8888)
+**访问地址:** http://localhost:8888
 
 Dashboard 提供：
-- 所有服务的统一入口界面
-- 实时服务状态检测
-- 快速访问各 Web 服务
-- CLI 工具命令复制
+- 📊 所有服务的统一入口界面
+- ✅ 实时服务状态检测
+- 🔗 快速访问各 Web 服务
+- 📋 CLI 工具命令复制
 
-### 服务状态检测
+### 直接访问地址
 
-| 服务类型 | 检测方式 |
-|---------|---------|
-| Web 服务 | TCP 端口连接检测 |
-| CLI 工具 | `shutil.which()` 命令查找 |
-| Docker | 执行 `docker ps` 命令 |
-
-### 直接访问
-
-| 服务 | 地址 | 说明 |
-|-----|------|------|
-| VS Code Server | http://localhost:${VSCODE_PORT:-8080} | 密码: `agentbox` |
-| Web Terminal | http://localhost:${WEB_TERMINAL_PORT:-7681} | 浏览器终端 |
-| OpenClaw Gateway | http://localhost:${OPENCLAW_PORT:-18789} | AI 助手网关 |
-| CoPaw Gateway | http://localhost:${COPAW_PORT:-8088} | AgentScope 网关 |
-| Skills Manager | http://localhost:${NOVNC_PORT:-6080}/vnc.html | VNC 界面 |
-| HiClaw Gateway | http://localhost:${HICLAW_GATEWAY_PORT:-18080} | Higress 网关 |
-| HiClaw Console | http://localhost:${HICLAW_CONSOLE_PORT:-18001} | 管理控制台 |
-| HiClaw Element | http://localhost:${HICLAW_ELEMENT_PORT:-18088} | Matrix 客户端 |
+| 服务 | 地址 | 默认密码 | 说明 |
+|-----|------|----------|------|
+| **Dashboard** | http://localhost:8888 | - | 统一入口 |
+| **VS Code Server** | http://localhost:8080 | `agentbox` | Web IDE |
+| **Web Terminal** | http://localhost:7681 | - | 浏览器终端 |
+| **OpenClaw** | http://localhost:18789 | - | AI 助手网关 |
+| **CoPaw** | http://localhost:8088 | - | AgentScope 网关 |
+| **ClawPanel** | http://localhost:1420 | - | OpenClaw 管理面板 |
+| **Skills Manager** | http://localhost:6080/vnc.html | - | VNC 界面 |
+| **HiClaw Gateway** | http://localhost:18080 | - | Higress 网关 |
+| **HiClaw Console** | http://localhost:18001 | - | 管理控制台 |
+| **HiClaw Element** | http://localhost:18088 | - | Matrix 客户端 |
 
 ---
 
-### 使用方式
+## 🏗️ 架构说明
 
-```bash
-# 进入容器
-docker exec -it agentbox bash
+### 目录结构
 
-# 加载环境变量
-source ~/.bashrc
-
-# Docker 命令
-docker ps
-docker images
-docker run hello-world
+```
+agent-box/
+├── docker-compose.yml          # Docker 编排配置
+├── Dockerfile                  # 镜像构建文件
+├── .env.example                # 环境变量模板
+├── config/
+│   └── plugins.yaml            # 插件启用配置
+├── scripts/
+│   ├── entrypoint.sh           # 容器入口脚本（容错设计）
+│   ├── lib.sh                  # 共享函数库
+│   └── plugin-manager.sh       # 插件管理 CLI (agentbox)
+├── plugins/                    # 插件定义目录 (16 个插件)
+│   ├── board/                  # Dashboard 服务
+│   ├── openclaw/               # OpenClaw 网关
+│   ├── vscode-server/          # VS Code Server
+│   ├── web-terminal/           # Web 终端
+│   ├── skills-manager/         # 技能管理器
+│   ├── novnc-base/             # noVNC 基础服务
+│   ├── copaw/                  # CoPaw 网关
+│   ├── hiclaw/                 # HiClaw AI Agent 平台
+│   ├── claude-code/            # Claude Code CLI
+│   ├── cursor-cli/             # Cursor CLI
+│   ├── codex/                  # Codex CLI
+│   ├── qwen-code/              # 通义千问 CLI
+│   ├── opencode/               # OpenCode CLI
+│   ├── kilocode/               # Kilocode CLI
+│   ├── iflow/                  # iFlow CLI
+│   └── docker/                 # Docker CLI
+├── host-share/                 # 宿主机共享目录
+└── data/                       # 持久化数据目录
 ```
 
+### 启动流程（容错设计）
+
+```
+容器启动 (root)
+    │
+    ├── 初始化环境目录 ✅
+    ├── 配置 Docker TCP 连接 ✅
+    │
+    └── 切换到 agent 用户 (gosu)
+            │
+            ├── 配置镜像源 (NPM/PIP/Go) ⚠️ 失败继续
+            ├── 启动 Supervisor 守护进程 ⚠️ 失败继续
+            ├── 恢复插件符号链接 ⚠️ 失败继续
+            ├── 安装启用的插件 ⚠️ 失败继续
+            └── 启动插件服务 ⚠️ 失败继续
+                    │
+                    └─→ 容器正常运行 ✅
+                        └─→ 显示失败统计和重试建议
+```
+
+**关键特性:**
+- ❌ 不使用 `set -e`，避免单个命令失败导致退出
+- ✅ 所有关键步骤使用 `|| true` 容错
+- ✅ 记录成功/失败统计
+- ✅ 提供重试建议
+- ✅ 单个插件失败不影响容器和其他插件
+
+### 持久化映射
+
+| 容器路径 | 宿主机路径 | 用途 |
+|---------|-----------|------|
+| `/home/agent/tools` | `./data/tools` | npm/pip 全局包 |
+| `/home/agent/workspace` | `./data/workspace` | 工作目录 |
+| `/home/agent/cache` | `./data/cache` | 模型缓存、临时文件 |
+| `/home/agent/.config` | `./data/.config` | 配置文件 |
+| `/home/agent/logs` | `./data/logs` | 服务日志 |
+| `/home/agent/plugins-data` | `./data/plugins-data` | 插件隔离数据 |
+| `/host-share` | `./host-share` | 宿主机共享目录 |
+
 ---
 
-## 配置参考
+## ⚙️ 配置参考
 
 ### 环境变量 (.env)
 
@@ -367,7 +338,7 @@ HTTPS_PROXY=
 INSTALL_PROXY=
 
 # ========== 端口配置 ==========
-# 格式: ${环境变量:-默认值}，可通过 .env 文件自定义
+# 格式：${环境变量:-默认值}，可通过 .env 文件自定义
 BOARD_PORT=8888
 VSCODE_PORT=8080
 WEB_TERMINAL_PORT=7681
@@ -392,9 +363,18 @@ requires:
   - nodejs >= 18
   - npm
 
-# 安装命令
+# 插件依赖（可选）
+depends:
+  - novnc-base
+
+# 安装命令（支持多行）
 install:
-  - npm install -g my-cli
+  - |
+    set -e
+    npm uninstall -g my-cli 2>/dev/null || true
+    npm install -g my-cli
+    # 验证安装
+    command -v my-cli || exit 1
 
 # 环境变量
 env:
@@ -407,7 +387,7 @@ env:
 post_install:
   - mkdir -p ~/.my-plugin
 
-# 持久化目录
+# 持久化目录（自动隔离）
 volumes:
   - ~/.my-plugin: 插件数据
 
@@ -415,35 +395,42 @@ volumes:
 healthcheck:
   command: my-cli --version
 
-# 服务配置 (可选)
+# 服务配置（可选）
 service:
+  # 常驻服务类型
+  daemon: true
+  # 自动启动
   auto_start: true
-  command: my-cli server
+  # 崩溃重启
   restart: true
+  # 最大重启次数
   max_restarts: 5
+  # 启动命令
+  command: my-cli server
+  # 停止命令
+  stop_command: pkill -f "my-cli"
+  # 重启命令
+  restart_command: pkill -f "my-cli"; sleep 2; my-cli server
 
-# 卸载命令
+# 卸载命令（保护用户数据）
 uninstall:
-  - npm uninstall -g my-cli
-  - rm -rf ~/.my-plugin
+  - |
+    set -e
+    # 清理安装文件
+    npm uninstall -g my-cli
+    rm -rf ~/.my-plugin/bin
+    # ✅ 保留用户数据
+    # rm -rf ~/.my-plugin  # 不要删除
+    log_info "User data preserved"
 
 # 更新命令
 update:
   - npm update -g my-cli
 ```
 
-### 环境变量格式
-
-| 格式 | 说明 | 示例 |
-|-----|------|------|
-| `VAR: required` | 必需变量，安装时检查 | `ANTHROPIC_API_KEY: required` |
-| `VAR: optional` | 可选变量 | `DEBUG: optional` |
-| `VAR: export ...` | 设置变量并写入 .bashrc | `PATH: export PATH="..."` |
-| `PATH_APPEND: path` | 添加到 PATH（防重复） | `PATH_APPEND: ~/.local/bin` |
-
 ---
 
-## 开发指南
+## 🛠️ 开发指南
 
 ### 添加新插件
 
@@ -455,7 +442,13 @@ mkdir plugins/my-plugin
 
 2. **创建 plugin.yaml**
 
-参考上方配置格式。
+参考上方配置格式，确保包含：
+- ✅ `install` - 安装命令
+- ✅ `uninstall` - 卸载命令（保护用户数据）
+- ✅ `update` - 更新命令
+- ✅ `healthcheck` - 健康检查
+- ✅ `service` - 服务配置（如果是 Web 服务）
+- ✅ `volumes` - 持久化目录
 
 3. **启用插件**
 
@@ -479,8 +472,11 @@ docker exec -it agentbox agentbox install my-plugin
 
 ```yaml
 service:
+  daemon: true               # 常驻服务，使用 Supervisor
   auto_start: true           # 自动启动
   command: my-cli server     # 启动命令
+  stop_command: pkill -f "my-cli"
+  restart_command: pkill -f "my-cli"; sleep 2; my-cli server
   restart: true              # 自动重启
   max_restarts: 5            # 最大重启次数
 ```
@@ -490,20 +486,91 @@ service:
 ### Dashboard 集成
 
 服务自动出现在 Dashboard 中，支持：
-- 端口服务：显示 URL 和端口
-- CLI 工具：显示命令行
-- 状态实时检测
+- 🌐 Web 服务：显示 URL 和端口
+- 💻 CLI 工具：显示命令行
+- ✅ 状态实时检测
 
 ---
 
-## 常用操作
+## 🔍 故障排查
+
+### 插件安装失败
 
 ```bash
-# 容器管理
-docker-compose up -d              # 启动
-docker-compose down               # 停止
-docker-compose restart            # 重启
-docker-compose logs -f            # 查看日志
+# 查看详细日志
+docker exec agentbox agentbox install <plugin> --force
+
+# 检查依赖
+docker exec agentbox agentbox status
+
+# 手动重试
+docker exec -it agentbox bash
+agentbox install <plugin>
+```
+
+### 服务无法启动
+
+```bash
+# 查看服务日志
+docker exec agentbox tail -f ~/logs/<service>.log
+
+# 查看 Supervisor 状态
+docker exec agentbox supervisorctl -c ~/supervisor/supervisord.conf status
+
+# 手动启动服务
+docker exec agentbox agentbox start-service <service>
+```
+
+### 容器重启问题
+
+**问题:** 单个插件失败导致容器重启
+
+**解决:** 已优化为容错模式
+
+```bash
+# 查看启动日志
+docker logs agentbox | grep -E "(Failed|WARNING|summary)"
+
+# 查看失败统计
+docker logs agentbox | grep "summary"
+
+# 手动重试失败插件
+docker exec -it agentbox bash
+agentbox install-all
+agentbox start-services
+```
+
+### 查看服务状态
+
+```bash
+# 所有服务状态
+docker exec agentbox agentbox service-status
+
+# Supervisor 状态
+docker exec agentbox supervisorctl -c ~/supervisor/supervisord.conf status
+
+# 实时日志
+docker exec agentbox tail -f ~/logs/<service>.log
+```
+
+---
+
+## 📊 常用操作
+
+### 容器管理
+
+```bash
+# 启动
+docker-compose up -d
+
+# 停止
+docker-compose down
+
+# 重启
+docker-compose restart
+
+# 查看日志
+docker-compose logs -f
 
 # 重建容器
 docker-compose down && docker-compose up -d --build
@@ -518,32 +585,29 @@ docker stats agentbox
 docker builder prune -f
 ```
 
----
-
-## 故障排除
-
-### 插件安装失败
+### 插件管理
 
 ```bash
-# 查看详细日志
-docker exec agentbox agentbox install <plugin> --force
+# 安装所有启用的插件
+agentbox install-all
 
-# 检查依赖
-docker exec agentbox agentbox status
-```
+# 启动所有服务
+agentbox start-services
 
-### 服务无法启动
+# 查看系统状态
+agentbox status
 
-```bash
-# 查看服务日志
-docker exec agentbox tail -f ~/logs/<service>.log
-
-# 查看 Supervisor 状态
-docker exec agentbox supervisorctl -c ~/supervisor/supervisord.conf status
+# 查看镜像源配置
+agentbox mirrors
 ```
 
 ---
 
-## 许可证
+## 📝 许可证
 
 MIT
+
+---
+
+**最后更新:** 2026-03-14  
+**版本:** 1.0.0

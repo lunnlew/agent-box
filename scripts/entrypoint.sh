@@ -7,8 +7,10 @@
 # 2. 配置镜像源
 # 3. 安装启用的插件
 # 4. 启动主进程
+#
+# 容错设计：单个插件失败不会导致容器重启
 
-set -e
+# ⚠️ 不使用 set -e，避免单个命令失败导致脚本退出
 
 # 引入共享函数库
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -91,12 +93,14 @@ EOF
 
     if pgrep -x "supervisord" > /dev/null; then
         log_success "Supervisor started successfully"
+        return 0
     else
         log_error "Failed to start Supervisor"
         if [ -f "$HOME/logs/supervisor/supervisord.log" ]; then
             log_info "Supervisor log (last 10 lines):"
             tail -10 "$HOME/logs/supervisor/supervisord.log" 2>/dev/null || true
         fi
+        return 1
     fi
 }
 
@@ -139,7 +143,7 @@ fix_docker_socket() {
 }
 
 # ===========================================
-# 安装插件
+# 安装插件（容错模式）
 # ===========================================
 install_plugins() {
     log_info "Installing enabled plugins..."
@@ -152,9 +156,44 @@ install_plugins() {
     fi
 
     if command -v agentbox &> /dev/null; then
-        agentbox install-all
+        # ⚠️ 使用 || true 确保即使安装失败也不退出
+        agentbox install-all || {
+            log_warning "Some plugins failed to install, continuing..."
+        }
     else
         log_warning "agentbox CLI not available, skipping plugin installation"
+    fi
+}
+
+# ===========================================
+# 恢复插件链接（容错模式）
+# ===========================================
+restore_plugin_links() {
+    log_info "Restoring plugin volume links..."
+
+    if command -v agentbox &> /dev/null; then
+        # ⚠️ 使用 || true 确保即使恢复失败也不退出
+        agentbox restore-links || {
+            log_warning "Failed to restore some plugin links, continuing..."
+        }
+    else
+        log_warning "agentbox CLI not available, skipping link restoration"
+    fi
+}
+
+# ===========================================
+# 启动服务（容错模式）
+# ===========================================
+start_services() {
+    log_info "Starting plugin services..."
+
+    if command -v agentbox &> /dev/null; then
+        # ⚠️ 使用 || true 确保即使启动失败也不退出
+        agentbox start-services || {
+            log_warning "Some plugin services failed to start, continuing..."
+        }
+    else
+        log_warning "agentbox CLI not available, skipping service startup"
     fi
 }
 
@@ -177,24 +216,36 @@ main_root() {
 
 # Agent 阶段
 main_agent() {
-    configure_mirrors
+    # 配置镜像源（失败不影响后续）
+    configure_mirrors || log_warning "Mirror configuration failed"
     show_mirror_config
-    check_dependencies
+    
+    # 检查依赖（失败不影响后续）
+    check_dependencies || log_warning "Dependency check failed"
 
-    start_supervisord
-
-    if command -v agentbox &> /dev/null; then
-        agentbox restore-links
+    # 启动 Supervisor（关键步骤，失败需要报告）
+    if ! start_supervisord; then
+        log_error "Supervisor failed to start, services will not be managed"
     fi
 
+    # 恢复插件链接（失败不影响后续）
+    restore_plugin_links
+
+    # 安装插件（失败不影响后续）
     install_plugins
 
-    if command -v agentbox &> /dev/null; then
-        agentbox start-services
-    fi
+    # 启动服务（失败不影响后续）
+    start_services
 
     log_success "AgentBox is ready!"
+    echo ""
+    echo "==========================================="
+    echo "  Note: Some plugins may have failed to"
+    echo "        start. Check logs for details."
+    echo "==========================================="
+    echo ""
 
+    # 执行传入的命令或进入 shell
     if [ $# -gt 0 ]; then
         exec "$@"
     else

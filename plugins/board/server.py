@@ -133,13 +133,37 @@ SERVICES = {
     },
     'skills-manager': {
         'internal_port': 6080,
-        'external_port': int(os.environ.get('NOVNC_PORT', 6080)),
+        'external_port': int(os.environ.get('SKILLS_MANAGER_NOVNC_PORT', 6080)),
         'name': 'Skills Manager',
         'icon': '📚',
         'desc': 'AI 编程助手技能管理工具，通过 noVNC 浏览器访问',
         'path': '/vnc.html?autoconnect=true&reconnect=true&resize=scale',
         'color': 'cyan',
-        'category': 'tools'
+        'category': 'tools',
+        'check_host': '127.0.0.1'
+    },
+    # 'superset': {
+    #     'internal_port': 6081,
+    #     'external_port': int(os.environ.get('SUPERSET_NOVNC_PORT', 6081)),
+    #     'name': 'Superset',
+    #     'icon': '🔭',
+    #     'desc': '强大的桌面集成开发环境，通过 noVNC 浏览器访问',
+    #     'path': '/vnc.html?autoconnect=true&reconnect=true&resize=scale',
+    #     'color': 'cyan',
+    #     'category': 'tools',
+    #     'check_host': '127.0.0.1'
+    # },
+    'clawpanel': {
+        'internal_port': 1420,
+        'external_port': int(os.environ.get('CLAWPANEL_PORT', 1420)),
+        'name': 'ClawPanel',
+        'icon': '🎯',
+        'desc': 'OpenClaw 可视化管理面板，内置 AI 助手一键安装配置诊断',
+        'path': '',
+        'color': 'indigo',
+        'badge': 'new',
+        'category': 'ai',
+        'check_host': '127.0.0.1'
     }
 }
 
