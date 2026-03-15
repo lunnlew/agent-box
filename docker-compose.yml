@@ -39,14 +39,14 @@ services:
       - "${WEB_TERMINAL_PORT:-7681}:7681"
       # OpenClaw Gateway (容器内 18789)
       - "${OPENCLAW_PORT:-18789}:18789"
+      # OpenClaw Dashboard (容器内 7000)
+      - "${DASHBOARD_PORT:-7000}:7000"
       # CoPaw Gateway (容器内 8088)
       - "${COPAW_PORT:-8088}:8088"
       # ClawPanel (容器内 1420)
       - "${CLAWPANEL_PORT:-1420}:1420"
       # Skills Manager (容器内 6080)
       - "${SKILLS_MANAGER_NOVNC_PORT:-6080}:6080"
-      # SUPERSET Manager (容器内 6081)
-      - "${SUPERSET_NOVNC_PORT:-6081}:6081"
 
     # Docker socket 权限
     group_add:

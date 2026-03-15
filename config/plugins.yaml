@@ -47,6 +47,10 @@ plugins:
   - name: clawpanel
     enabled: true
 
+  # OpenClaw Dashboard - OpenClaw AI Agent 官方可视化管理面板（纯 Web 服务）
+  - name: openclaw-dashboard
+    enabled: true
+
   # Skills Manager - AI 编程助手技能管理工具（浏览器访问）
   - name: skills-manager
     enabled: true

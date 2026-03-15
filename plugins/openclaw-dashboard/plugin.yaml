@@ -1,0 +1,149 @@
+# OpenClaw Dashboard 插件定义
+# OpenClaw 官方可视化管理面板 - 纯 Web 服务，无需 GUI/ noVNC
+name: openclaw-dashboard
+version: "1.0.0"
+description: OpenClaw Dashboard - OpenClaw AI Agent 官方可视化管理面板（纯 Web 服务）
+
+# 依赖要求
+requires:
+  - nodejs >= 18
+  - npm
+  - git
+
+# 安装命令
+install:
+  - |
+    set +e
+
+    log_info "Installing OpenClaw Dashboard..."
+
+    DASHBOARD_PATH="$HOME/tools/openclaw-dashboard"
+
+    # 清理旧目录
+    rm -rf "$DASHBOARD_PATH" 2>/dev/null || true
+    mkdir -p "$DASHBOARD_PATH"
+
+    # 克隆源码
+    log_info "Cloning OpenClaw Dashboard repository..."
+    git clone --depth 1 https://github.com/tugcantopaloglu/openclaw-dashboard.git "$DASHBOARD_PATH"
+
+    # 安装依赖
+    log_info "Installing dependencies..."
+    cd "$DASHBOARD_PATH"
+    npm install
+
+    log_success "OpenClaw Dashboard installed successfully"
+
+# 环境变量配置
+env:
+  DASHBOARD_PORT: export DASHBOARD_PORT=${DASHBOARD_PORT:-7000}
+  WORKSPACE_DIR: export WORKSPACE_DIR=${WORKSPACE_DIR:-$HOME}
+  OPENCLAW_DIR: export OPENCLAW_DIR=$HOME/.openclaw
+  OPENCLAW_AGENT: export OPENCLAW_AGENT=${OPENCLAW_AGENT:-main}
+  DASHBOARD_ALLOW_HTTP: export DASHBOARD_ALLOW_HTTP=true
+
+# 安装后配置
+post_install:
+  - |
+    set +e
+
+    log_info "Initializing OpenClaw Dashboard..."
+
+    DASHBOARD_PATH="$HOME/tools/openclaw-dashboard"
+
+    echo ""
+    echo "============================================"
+    echo "  OpenClaw Dashboard 安装完成!"
+    echo "============================================"
+    echo ""
+    echo "访问地址：http://localhost:${DASHBOARD_PORT:-7000}"
+    echo "安装目录：~/tools/openclaw-dashboard"
+    echo ""
+    echo "环境变量:"
+    echo "  export DASHBOARD_PORT=7000"
+    echo "  export WORKSPACE_DIR=$HOME"
+    echo "  export OPENCLAW_DIR=$HOME/.openclaw"
+    echo "  export OPENCLAW_AGENT=main"
+    echo ""
+    echo "启动服务:"
+    echo "  agentbox start-service openclaw-dashboard"
+    echo ""
+    echo "或直接运行:"
+    echo "  cd ~/tools/openclaw-dashboard && node server.js"
+    echo ""
+    echo "⚠️ 重要：首次启动后会显示 Recovery token，请保存!"
+    echo "============================================"
+    echo ""
+
+# 需要持久化的目录
+volumes:
+  - ~/.openclaw: OpenClaw 配置和数据
+  - ~/tools/openclaw-dashboard: OpenClaw Dashboard 安装目录
+  - ~/logs/openclaw-dashboard.log: OpenClaw Dashboard 日志
+
+# 服务配置（Web 服务）
+service:
+  # 常驻服务，使用 Supervisor 管理
+  daemon: true
+  # 服务启动后自动启动
+  auto_start: true
+  # 服务崩溃后自动重启
+  restart: true
+  # 最大重启次数
+  max_restarts: 5
+  # 启动命令
+  command: bash -c 'cd $HOME/tools/openclaw-dashboard && DASHBOARD_PORT=${DASHBOARD_PORT:-7000} WORKSPACE_DIR=${WORKSPACE_DIR:-$HOME} OPENCLAW_DIR=$HOME/.openclaw OPENCLAW_AGENT=${OPENCLAW_AGENT:-main} DASHBOARD_ALLOW_HTTP=true node server.js'
+  # ⚠️ 注意：daemon 服务使用 supervisorctl stop/start/restart
+  # 不配置 stop_command 和 restart_command
+
+# 健康检查
+healthcheck:
+  command: curl -fsS http://localhost:${DASHBOARD_PORT:-7000} > /dev/null 2>&1
+
+# 卸载命令
+uninstall:
+  - |
+    set +e
+
+    log_info "Uninstalling OpenClaw Dashboard..."
+
+    # 停止进程
+    pkill -f "openclaw-dashboard" 2>/dev/null || true
+    pkill -f "node.*server.js" 2>/dev/null || true
+
+    # 清理安装目录
+    rm -rf ~/tools/openclaw-dashboard 2>/dev/null || true
+
+    rm -rf ~/supervisor/openclaw-dashboard.conf 2>/dev/null || true
+    rm -rf ~/supervisor/openclaw-dashboard.sh 2>/dev/null || true
+
+    # ⚠️ 保留用户配置（OpenClaw 数据）
+    # rm -rf ~/.openclaw 2>/dev/null || true
+
+    log_success "OpenClaw Dashboard uninstalled"
+
+# 更新命令
+update:
+  - |
+    set +e
+
+    log_info "Updating OpenClaw Dashboard..."
+
+    # 停止当前服务
+    pkill -f "openclaw-dashboard" 2>/dev/null || true
+    pkill -f "node.*server.js" 2>/dev/null || true
+
+    # Git pull 更新
+    cd ~/tools/openclaw-dashboard
+    git pull --rebase
+
+    # 重新安装依赖
+    npm install
+
+    # 验证
+    if [ ! -f ~/tools/openclaw-dashboard/package.json ]; then
+      log_error "Update verification failed"
+      exit 1
+    fi
+
+    log_success "OpenClaw Dashboard updated successfully"

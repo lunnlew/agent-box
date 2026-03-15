@@ -119,6 +119,17 @@ SERVICES = {
         'category': 'ai',
         'check_host': '127.0.0.1'
     },
+    'openclaw-dashboard': {
+        'internal_port': 7000,
+        'external_port': int(os.environ.get('DASHBOARD_PORT', 7000)),
+        'name': 'OpenClaw Dashboard',
+        'icon': '📊',
+        'desc': 'OpenClaw AI Agent 官方可视化管理面板（纯 Web 服务）',
+        'path': '',
+        'color': 'blue',
+        'category': 'ai',
+        'check_host': '127.0.0.1'
+    },
     'copaw': {
         'internal_port': 8088,
         'external_port': int(os.environ.get('COPAW_PORT', 8088)),
