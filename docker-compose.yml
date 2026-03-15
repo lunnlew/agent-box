@@ -41,6 +41,8 @@ services:
       - "${OPENCLAW_PORT:-18789}:18789"
       # OpenClaw Dashboard (容器内 7000)
       - "${DASHBOARD_PORT:-7000}:7000"
+      # ClawPort UI (容器内 3000)
+      - "${CLAWPORT_PORT:-3000}:3000"
       # CoPaw Gateway (容器内 8088)
       - "${COPAW_PORT:-8088}:8088"
       # ClawPanel (容器内 1420)

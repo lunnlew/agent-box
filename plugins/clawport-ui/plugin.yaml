@@ -1,0 +1,223 @@
+# ClawPort UI 插件定义
+# ClawPort - OpenClaw AI Agent 可视化管理中心（Org Map、Chat、Kanban、Cron 监控等）
+name: clawport-ui
+version: "1.0.0"
+description: ClawPort UI - OpenClaw AI Agent 可视化管理中心，提供组织架构图、Agent 聊天、看板、Cron 监控等功能
+
+# 依赖要求
+requires:
+  - nodejs >= 22
+  - npm
+
+# 安装命令
+install:
+  - |
+    set +e
+
+    # 获取 npm 全局安装路径
+    NPM_ROOT=$(npm root -g 2>/dev/null)
+    # npm 10.x 不支持 bin -g，使用 prefix + /bin 替代
+    NPM_PREFIX=$(npm prefix -g 2>/dev/null)
+    NPM_BIN="$NPM_PREFIX/bin"
+    CLAWPORT_PATH="$NPM_ROOT/clawport-ui"
+    CLAWPORT_BIN="$NPM_BIN/clawport"
+
+    log_info "NPM root: $NPM_ROOT"
+    log_info "NPM prefix: $NPM_PREFIX"
+    log_info "NPM bin: $NPM_BIN"
+
+    # 清理残留的临时目录
+    log_info "Cleaning up temp directories..."
+    for tmp_dir in "$NPM_ROOT"/.clawport-ui-*; do
+      if [ -d "$tmp_dir" ]; then
+        rm -rf "$tmp_dir" 2>/dev/null || true
+        log_info "  Removed temp dir: $tmp_dir"
+      fi
+    done
+
+    # 卸载旧版本
+    log_info "Uninstalling existing clawport-ui..."
+    npm uninstall -g clawport-ui 2>/dev/null || true
+
+    # 清理残留目录
+    if [ -d "$CLAWPORT_PATH" ]; then
+      rm -rf "$CLAWPORT_PATH" 2>/dev/null || true
+      log_info "  Removed existing: $CLAWPORT_PATH"
+    fi
+    if [ -L "$CLAWPORT_BIN" ]; then
+      rm -f "$CLAWPORT_BIN" 2>/dev/null || true
+      log_info "  Removed symlink: $CLAWPORT_BIN"
+    fi
+
+    # 全局安装
+    log_info "Installing clawport-ui@latest..."
+    if ! npm install -g clawport-ui@latest; then
+      log_warning "npm install failed, retrying..."
+      sleep 2
+      npm install -g clawport-ui@latest
+    fi
+
+    # 验证安装完整性
+    log_info "Verifying installation..."
+
+    # 检查 package.json 是否存在
+    if [ ! -f "$CLAWPORT_PATH/package.json" ]; then
+      log_error "package.json not found, installation incomplete!"
+      exit 1
+    fi
+
+    # 检查 CLI 命令是否可用
+    if ! command -v clawport &>/dev/null; then
+      log_error "clawport command not found, installation incomplete!"
+      log_info "Available binaries in $HOME/tools/bin:"
+      ls -la "$HOME/tools/bin/" 2>/dev/null | grep -i clawport || echo "(none)"
+      exit 1
+    fi
+
+    # 清理可能的临时目录
+    for tmp_dir in "$NPM_ROOT"/.clawport-ui-*; do
+      [ -d "$tmp_dir" ] && rm -rf "$tmp_dir" 2>/dev/null || true
+    done
+
+    log_success "ClawPort UI installed successfully"
+
+# 环境变量配置
+env:
+  CLAWPORT_PORT: export CLAWPORT_PORT=${CLAWPORT_PORT:-3000}
+  WORKSPACE_PATH: export WORKSPACE_PATH=${WORKSPACE_PATH:-$HOME/.openclaw/workspace}
+  OPENCLAW_BIN: export OPENCLAW_BIN=$HOME/tools/bin/openclaw
+  OPENCLAW_GATEWAY_TOKEN: optional
+  OPENCLAW_GATEWAY_PORT: export OPENCLAW_GATEWAY_PORT=${OPENCLAW_GATEWAY_PORT:-18789}
+  NEXT_PUBLIC_CLAWPORT_PORT: export NEXT_PUBLIC_CLAWPORT_PORT=${CLAWPORT_PORT:-3000}
+  PATH_APPEND: ~/tools/bin
+
+# 安装后配置
+post_install:
+  - |
+    set +e
+
+    log_info "Initializing ClawPort UI..."
+
+    # 创建配置文件目录
+    mkdir -p ~/.config/clawport-ui
+
+    # 创建 .env.local 配置文件
+    log_info "Creating .env.local configuration..."
+    cat > ~/.config/clawport-ui/.env.local << EOF
+    WORKSPACE_PATH=${WORKSPACE_PATH:-$HOME/.openclaw/workspace}
+    OPENCLAW_BIN=$HOME/tools/bin/openclaw
+    OPENCLAW_GATEWAY_TOKEN=${OPENCLAW_GATEWAY_TOKEN:-}
+    OPENCLAW_GATEWAY_PORT=${OPENCLAW_GATEWAY_PORT:-18789}
+    PORT=${CLAWPORT_PORT:-3000}
+    NEXT_PUBLIC_CLAWPORT_PORT=${CLAWPORT_PORT:-3000}
+    EOF
+
+    echo ""
+    echo "============================================"
+    echo "  ClawPort UI 安装完成!"
+    echo "============================================"
+    echo ""
+    echo "访问地址：http://localhost:${CLAWPORT_PORT:-3000}"
+    echo ""
+    echo "环境变量:"
+    echo "  WORKSPACE_PATH=~/.openclaw/workspace"
+    echo "  OPENCLAW_BIN=~/tools/bin/openclaw"
+    echo "  OPENCLAW_GATEWAY_PORT=18789"
+    echo ""
+    echo "启动服务:"
+    echo "  agentbox start-service clawport-ui"
+    echo ""
+    echo "或手动运行:"
+    echo "  clawport dev"
+    echo ""
+    echo "⚠️ 确保 OpenClaw Gateway 已启动并运行!"
+    echo "============================================"
+    echo ""
+
+# 需要持久化的目录
+volumes:
+  - ~/.openclaw: OpenClaw 配置和数据
+  - ~/.config/clawport-ui: ClawPort UI 配置文件
+  - ~/logs/clawport-ui.log: ClawPort UI 日志
+
+# 服务配置（Web 服务）
+service:
+  # 常驻服务，使用 Supervisor 管理
+  daemon: true
+  # 服务启动后自动启动
+  auto_start: true
+  # 服务崩溃后自动重启
+  restart: true
+  # 最大重启次数
+  max_restarts: 5
+  # 启动命令（使用 clawport dev 启动开发服务器）
+  command: bash -c 'cd $HOME && WORKSPACE_PATH=${WORKSPACE_PATH:-$HOME/.openclaw/workspace} OPENCLAW_BIN=$HOME/tools/bin/openclaw OPENCLAW_GATEWAY_PORT=${OPENCLAW_GATEWAY_PORT:-18789} PORT=${CLAWPORT_PORT:-3000} NEXT_PUBLIC_CLAWPORT_PORT=${CLAWPORT_PORT:-3000} clawport dev'
+  # ⚠️ 注意：daemon 服务使用 supervisorctl stop/start/restart
+  # 不配置 stop_command 和 restart_command
+
+# 健康检查
+healthcheck:
+  # 使用 curl 检查服务是否响应，或检查 clawport 命令是否可用
+  command: curl -fsS http://localhost:${CLAWPORT_PORT:-3000} > /dev/null 2>&1 || command -v clawport &>/dev/null
+
+# 卸载命令
+uninstall:
+  - |
+    set +e
+
+    log_info "Uninstalling ClawPort UI..."
+
+    # 停止进程
+    pkill -f "clawport" 2>/dev/null || true
+    pkill -f "next.*server" 2>/dev/null || true
+
+    # npm 卸载
+    npm uninstall -g clawport-ui 2>/dev/null || true
+
+    # 获取路径
+    NPM_ROOT=$(npm root -g 2>/dev/null)
+    NPM_PREFIX=$(npm prefix -g 2>/dev/null)
+    CLAWPORT_PATH="$NPM_ROOT/clawport-ui"
+    CLAWPORT_BIN="$NPM_PREFIX/bin/clawport"
+
+    # 清理目录和链接
+    [ -d "$CLAWPORT_PATH" ] && rm -rf "$CLAWPORT_PATH" 2>/dev/null || true
+    [ -L "$CLAWPORT_BIN" ] && rm -f "$CLAWPORT_BIN" 2>/dev/null || true
+
+    rm -rf ~/supervisor/clawport-ui.conf 2>/dev/null || true
+    rm -rf ~/supervisor/clawport-ui.sh 2>/dev/null || true
+
+    # 保留配置文件（可选）
+    # rm -rf ~/.config/clawport-ui 2>/dev/null || true
+
+    log_info "User configuration preserved in ~/.config/clawport-ui"
+    log_success "ClawPort UI uninstalled"
+
+# 更新命令
+update:
+  - |
+    set +e
+
+    NPM_ROOT=$(npm root -g 2>/dev/null)
+    CLAWPORT_PATH="$NPM_ROOT/clawport-ui"
+
+    log_info "Updating ClawPort UI..."
+
+    # 停止当前服务
+    pkill -f "clawport" 2>/dev/null || true
+    pkill -f "next.*server" 2>/dev/null || true
+
+    # 更新（覆盖安装）
+    npm install -g clawport-ui@latest || {
+      log_warning "Update failed, reinstalling..."
+      npm install -g clawport-ui@latest
+    }
+
+    # 验证更新
+    if [ ! -f "$CLAWPORT_PATH/package.json" ]; then
+      log_error "Update verification failed"
+      exit 1
+    fi
+
+    clawport --version
+    log_success "ClawPort UI updated successfully"

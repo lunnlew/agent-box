@@ -51,6 +51,10 @@ plugins:
   - name: openclaw-dashboard
     enabled: true
 
+  # ClawPort UI - OpenClaw AI Agent 可视化管理中心（Org Map、Chat、Kanban 等）
+  - name: clawport-ui
+    enabled: true
+
   # Skills Manager - AI 编程助手技能管理工具（浏览器访问）
   - name: skills-manager
     enabled: true

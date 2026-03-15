@@ -175,6 +175,18 @@ SERVICES = {
         'badge': 'new',
         'category': 'ai',
         'check_host': '127.0.0.1'
+    },
+    'clawport-ui': {
+        'internal_port': 3000,
+        'external_port': int(os.environ.get('CLAWPORT_PORT', 3000)),
+        'name': 'ClawPort UI',
+        'icon': '🎮',
+        'desc': 'OpenClaw AI Agent 可视化管理中心（Org Map、Chat、Kanban、Cron 监控）',
+        'path': '',
+        'color': 'purple',
+        'badge': 'new',
+        'category': 'ai',
+        'check_host': '127.0.0.1'
     }
 }
 
