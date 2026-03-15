@@ -124,7 +124,8 @@ service:
 
 # 健康检查
 healthcheck:
-  command: openclaw --version
+  # 使用 test 命令检查二进制文件是否存在，避免 openclaw --version 的 Node.js 启动开销
+  command: test -f $HOME/tools/bin/openclaw || test -f $HOME/tools/lib/node_modules/openclaw/openclaw.mjs
 
 # 安装后配置
 post_install:
