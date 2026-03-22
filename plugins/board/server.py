@@ -75,8 +75,8 @@ SERVICES = {
         'check_host': '127.0.0.1'
     },
     'hiclaw-gateway': {
-        'internal_port': int(os.environ.get('HICLAW_GATEWAY_PORT', 18080)),
-        'external_port': int(os.environ.get('HICLAW_GATEWAY_PORT', 18080)),
+        'internal_port': int(os.environ.get('HICLAW_PORT_GATEWAY', 18080)),
+        'external_port': int(os.environ.get('HICLAW_PORT_GATEWAY', 18080)),
         'name': 'HiClaw Gateway',
         'icon': '🌐',
         'desc': 'HiClaw Higress 网关入口',
@@ -86,8 +86,8 @@ SERVICES = {
         'check_host': 'host.docker.internal'
     },
     'hiclaw-console': {
-        'internal_port': int(os.environ.get('HICLAW_CONSOLE_PORT', 18001)),
-        'external_port': int(os.environ.get('HICLAW_CONSOLE_PORT', 18001)),
+        'internal_port': int(os.environ.get('HICLAW_PORT_CONSOLE', 18001)),
+        'external_port': int(os.environ.get('HICLAW_PORT_CONSOLE', 18001)),
         'name': 'HiClaw Console',
         'icon': '🎛️',
         'desc': 'HiClaw 管理控制台',
@@ -97,8 +97,8 @@ SERVICES = {
         'check_host': 'host.docker.internal'
     },
     'hiclaw-element': {
-        'internal_port': int(os.environ.get('HICLAW_ELEMENT_PORT', 18088)),
-        'external_port': int(os.environ.get('HICLAW_ELEMENT_PORT', 18088)),
+        'internal_port': int(os.environ.get('HICLAW_PORT_ELEMENT_WEB', 18088)),
+        'external_port': int(os.environ.get('HICLAW_PORT_ELEMENT_WEB', 18088)),
         'name': 'HiClaw Element',
         'icon': '💬',
         'desc': 'HiClaw Matrix 消息客户端',

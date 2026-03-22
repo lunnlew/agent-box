@@ -1,118 +1,158 @@
 # HiClaw 插件定义
 name: hiclaw
-version: "1.1.0"
+version: "1.6.0"
 description: HiClaw - AI Agent 平台，集成 Higress 网关和 Matrix 消息平台
 
 # 依赖要求
 requires:
   - docker
+  - bash
 
-# 安装命令 - 直接运行 Docker 容器
+# 安装命令 - 调用官方安装脚本（非交互模式）
 install:
-  # 创建必要的目录
-  - mkdir -p ~/hiclaw-manager ~/hiclaw-data
-  # 创建环境配置文件（如果不存在）
-  - bash -c 'if [ ! -f ~/hiclaw-manager.env ]; then touch ~/hiclaw-manager.env; echo "# HiClaw 环境配置文件" >> ~/hiclaw-manager.env; echo "# 配置 LLM API 密钥等参数" >> ~/hiclaw-manager.env; fi'
-  # 检查并停止已存在的容器
-  - bash -c 'if docker ps -a --filter name=hiclaw-manager -q | grep -q .; then echo "容器 hiclaw-manager 已存在，正在移除..."; docker rm -f hiclaw-manager; fi'
-  # 拉取最新镜像（支持代理）
-  - bash -c 'if [ -n "$INSTALL_PROXY" ]; then docker pull --quiet higress-registry.cn-hangzhou.cr.aliyuncs.com/higress/hiclaw-manager:latest; elif [ -n "$HTTPS_PROXY" ]; then export HTTPS_PROXY="$HTTPS_PROXY" && docker pull --quiet higress-registry.cn-hangzhou.cr.aliyuncs.com/higress/hiclaw-manager:latest; else docker pull --quiet higress-registry.cn-hangzhou.cr.aliyuncs.com/higress/hiclaw-manager:latest; fi'
-  # 运行容器（不使用 --rm 以便容器持久化）
-  - bash -c 'docker run -d --name hiclaw-manager --restart unless-stopped --env-file ~/hiclaw-manager.env -e HOME=/root/manager-workspace -w /root/manager-workspace -v /var/run/docker.sock:/var/run/docker.sock -p ${HICLAW_GATEWAY_PORT:-18080}:8080 -p ${HICLAW_CONSOLE_PORT:-18001}:8001 -p ${HICLAW_ELEMENT_PORT:-18088}:8088 -v ~/hiclaw-manager:/root/manager-workspace -v ~/hiclaw-data:/data -v ~/hiclaw-manager.env:/root/.env -v /host-share:/host-share higress-registry.cn-hangzhou.cr.aliyuncs.com/higress/hiclaw-manager:latest'
-  # 等待容器启动并检查状态
-  - bash -c 'sleep 3; if ! docker ps --filter name=hiclaw-manager --filter status=running -q | grep -q .; then echo "警告：容器启动失败，请检查日志：docker logs hiclaw-manager"; exit 1; fi'
-
-# 环境变量配置
-env:
-  HICLAW_GATEWAY_PORT: export HICLAW_GATEWAY_PORT=${HICLAW_GATEWAY_PORT:-18080}
-  HICLAW_CONSOLE_PORT: export HICLAW_CONSOLE_PORT=${HICLAW_CONSOLE_PORT:-18001}
-  HICLAW_ELEMENT_PORT: export HICLAW_ELEMENT_PORT=${HICLAW_ELEMENT_PORT:-18088}
-
-# 安装后提示
-post_install:
+  # 转换 env 文件为 Unix 格式并修复权限（解决 Windows 换行符和权限问题）
   - |
-    echo ""
-    echo "============================================"
-    echo "  HiClaw 安装完成!"
-    echo "============================================"
-    echo ""
-    echo "配置文件：~/hiclaw-manager.env"
-    echo "数据目录：~/hiclaw-data"
-    echo "共享目录：/host-share"
-    echo ""
-    echo "访问地址:"
-    echo "  Gateway:  http://localhost:${HICLAW_GATEWAY_PORT:-18080}"
-    echo "  Console:  http://localhost:${HICLAW_CONSOLE_PORT:-18001}"
-    echo "  Element:  http://localhost:${HICLAW_ELEMENT_PORT:-18088}"
-    echo ""
-    echo "常用命令:"
-    echo "  查看日志：docker logs -f hiclaw-manager"
-    echo "  重启服务：docker restart hiclaw-manager"
-    echo "  停止服务：docker stop hiclaw-manager"
-    echo "============================================"
-    echo ""
+    if [ -f ~/hiclaw-manager.env ]; then
+      sed -i 's/\r$//' ~/hiclaw-manager.env 2>/dev/null || true
+      # 修复权限：确保 agent 用户可写
+      chown agent:agent ~/hiclaw-manager.env 2>/dev/null || true
+      chmod 644 ~/hiclaw-manager.env 2>/dev/null || true
+    fi
+  # 下载官方安装脚本并执行（在非交互模式下需要预设 LLM 配置）
+  - |
+    bash -c '
+    set -e
 
-# 需要持久化的目录
+    # 设置环境变量（非交互模式，使用默认值）
+    export HICLAW_NON_INTERACTIVE=1
+    # 设置数据持久化到 Docker volume
+    export HICLAW_DATA_DIR=hiclaw-data
+    # Manager 工作空间（官方默认值）
+    export HICLAW_WORKSPACE_DIR=~/hiclaw-manager
+    # 端口配置（使用官方变量名）
+    export HICLAW_PORT_GATEWAY=${HICLAW_PORT_GATEWAY:-18080}
+    export HICLAW_PORT_CONSOLE=${HICLAW_PORT_CONSOLE:-18001}
+    export HICLAW_PORT_ELEMENT_WEB=${HICLAW_PORT_ELEMENT_WEB:-18088}
+    # LLM 提供商配置（非交互模式需要预设，使用 DASHSCOPE_API_KEY）
+    export HICLAW_LLM_PROVIDER=${HICLAW_LLM_PROVIDER:-qwen}
+    export HICLAW_LLM_MODEL=${HICLAW_LLM_MODEL:-qwen3.5-plus}
+    export HICLAW_LLM_API_KEY=${HICLAW_LLM_API_KEY:-${DASHSCOPE_API_KEY:-sk-dummy-key-for-test}}
+
+    # 下载官方脚本
+    curl -fsSL https://higress.ai/hiclaw/install.sh -o /tmp/hiclaw-install.sh
+    chmod +x /tmp/hiclaw-install.sh
+
+    # 获取 agentbox 容器的 /host-share 挂载源路径（主机路径）
+    HOST_SHARE_SOURCE=$(docker inspect agentbox --format "{{json .Mounts}}" | grep -o "Source.:.[^,]*host-share[^,]*" | sed "s/Source.:\"\(.*\)\"/\1/")
+
+    if [ -z "$HOST_SHARE_SOURCE" ]; then
+      echo "警告：无法获取 host-share 挂载源，使用默认路径"
+      HOST_SHARE_SOURCE="$HOME"
+    fi
+
+    # 将 Windows 路径转换为 Docker 格式（反斜杠转正斜杠，压缩双斜杠）
+    HOST_SHARE_SOURCE=$(echo "$HOST_SHARE_SOURCE" | tr "\\\\" "/" | sed "s#//#/#g")
+
+    echo "Host share source: $HOST_SHARE_SOURCE"
+
+    # 设置 HICLAW_HOST_SHARE_DIR 为主机路径，让官方脚本自己构建挂载参数
+    export HICLAW_HOST_SHARE_DIR="$HOST_SHARE_SOURCE"
+
+    # 执行安装脚本（官方脚本会使用正确的主机路径挂载）
+    bash /tmp/hiclaw-install.sh manager
+
+    # 清理
+    rm -f /tmp/hiclaw-install.sh
+    '
+
+# 环境变量配置（使用官方变量名）
+env:
+  HICLAW_PORT_GATEWAY: export HICLAW_PORT_GATEWAY=${HICLAW_PORT_GATEWAY:-18080}
+  HICLAW_PORT_CONSOLE: export HICLAW_PORT_CONSOLE=${HICLAW_PORT_CONSOLE:-18001}
+  HICLAW_PORT_ELEMENT_WEB: export HICLAW_PORT_ELEMENT_WEB=${HICLAW_PORT_ELEMENT_WEB:-18088}
+
+# 需要持久化的目录（由官方脚本管理）
 volumes:
-  - ~/hiclaw-manager: HiClaw Manager 工作空间
-  - ~/hiclaw-data: HiClaw 数据目录
-  - ~/hiclaw-manager.env: HiClaw 环境配置文件
+  - hiclaw-data: Docker 数据卷（由官方脚本创建）
+  - ~/hiclaw-manager: Manager 工作空间
+  - ~/hiclaw-manager.env: 环境配置文件
+  - /host-share: 共享目录 (与 agentbox 容器共享)
 
-# 健康检查 - 检查 Docker 容器是否运行
+# 健康检查 - 检查 Docker 容器是否运行（使用 grep -q . 确保有输出才返回 0）
 healthcheck:
-  command: docker ps --filter name=hiclaw-manager --filter status=running -q
+  command: docker ps --filter name=hiclaw-manager --filter status=running -q | grep -q .
 
 # 服务配置
 service:
   daemon: false
+  auto_start: true
   command: |
-    # 检查容器是否存在
-    if ! docker ps -a --filter name=hiclaw-manager -q | grep -q .; then
-      echo "容器 hiclaw-manager 不存在，正在创建..."
-      # 确保环境文件存在
-      if [ ! -f ~/hiclaw-manager.env ]; then
-        touch ~/hiclaw-manager.env
-        echo "# HiClaw 环境配置文件" >> ~/hiclaw-manager.env
+    # 检查容器是否已存在
+    if docker ps -a --filter name=hiclaw-manager -q | grep -q .; then
+      # 容器存在，直接启动
+      if docker ps --filter name=hiclaw-manager --filter status=running -q | grep -q .; then
+        echo "HiClaw Manager 已在运行中"
+        exit 0
       fi
-      # 拉取镜像
-      if [ -n "$INSTALL_PROXY" ]; then
-        docker pull --quiet higress-registry.cn-hangzhou.cr.aliyuncs.com/higress/hiclaw-manager:latest
-      elif [ -n "$HTTPS_PROXY" ]; then
-        export HTTPS_PROXY="$HTTPS_PROXY" && docker pull --quiet higress-registry.cn-hangzhou.cr.aliyuncs.com/higress/hiclaw-manager:latest
+      echo "正在启动 HiClaw Manager..."
+      docker start hiclaw-manager
+      sleep 3
+      if docker ps --filter name=hiclaw-manager --filter status=running -q | grep -q .; then
+        echo "HiClaw Manager 启动成功"
+        exit 0
       else
-        docker pull --quiet higress-registry.cn-hangzhou.cr.aliyuncs.com/higress/hiclaw-manager:latest
+        echo "错误：HiClaw Manager 启动失败，请检查日志：docker logs hiclaw-manager"
+        exit 1
       fi
-      # 创建并启动容器
-      docker run -d --name hiclaw-manager --restart unless-stopped \
-        --env-file ~/hiclaw-manager.env \
-        -e HOME=/root/manager-workspace \
-        -w /root/manager-workspace \
-        -v /var/run/docker.sock:/var/run/docker.sock \
-        -p ${HICLAW_GATEWAY_PORT:-18080}:8080 \
-        -p ${HICLAW_CONSOLE_PORT:-18001}:8001 \
-        -p ${HICLAW_ELEMENT_PORT:-18088}:8088 \
-        -v ~/hiclaw-manager:/root/manager-workspace \
-        -v ~/hiclaw-data:/data \
-        -v ~/hiclaw-manager.env:/root/.env \
-        -v /host-share:/host-share \
-        higress-registry.cn-hangzhou.cr.aliyuncs.com/higress/hiclaw-manager:latest
-      sleep 2
-    fi
-    # 检查容器状态
-    if docker ps --filter name=hiclaw-manager --filter status=running -q | grep -q .; then
-      echo "容器 hiclaw-manager 已在运行中"
-      exit 0
-    fi
-    # 启动已停止的容器
-    echo "正在启动容器 hiclaw-manager..."
-    docker start hiclaw-manager
-    sleep 2
-    if docker ps --filter name=hiclaw-manager --filter status=running -q | grep -q .; then
-      echo "容器 hiclaw-manager 启动成功"
-      exit 0
     else
-      echo "错误：容器启动失败，请检查日志：docker logs hiclaw-manager"
-      exit 1
+      # 容器不存在，执行安装
+      echo "HiClaw Manager 未安装，正在执行安装..."
+
+      # 转换 env 文件为 Unix 格式并修复权限（解决 Windows 换行符和权限问题）
+      if [ -f ~/hiclaw-manager.env ]; then
+        sed -i 's/\r$//' ~/hiclaw-manager.env 2>/dev/null || true
+        chown agent:agent ~/hiclaw-manager.env 2>/dev/null || true
+        chmod 644 ~/hiclaw-manager.env 2>/dev/null || true
+      fi
+
+      bash -c '
+      # 设置环境变量（非交互模式，使用默认值）
+      export HICLAW_NON_INTERACTIVE=1
+      # 设置数据持久化到 Docker volume
+      export HICLAW_DATA_DIR=hiclaw-data
+      # Manager 工作空间（官方默认值）
+      export HICLAW_WORKSPACE_DIR=~/hiclaw-manager
+      # 端口配置（使用官方变量名）
+      export HICLAW_PORT_GATEWAY=${HICLAW_PORT_GATEWAY:-18080}
+      export HICLAW_PORT_CONSOLE=${HICLAW_PORT_CONSOLE:-18001}
+      export HICLAW_PORT_ELEMENT_WEB=${HICLAW_PORT_ELEMENT_WEB:-18088}
+      # LLM 提供商配置（非交互模式需要预设）
+      export HICLAW_LLM_PROVIDER=${HICLAW_LLM_PROVIDER:-qwen}
+      export HICLAW_LLM_MODEL=${HICLAW_LLM_MODEL:-qwen3.5-plus}
+      export HICLAW_LLM_API_KEY=${HICLAW_LLM_API_KEY:-${DASHSCOPE_API_KEY:-sk-dummy-key-for-test}}
+
+      # 获取 agentbox 容器的 /host-share 挂载源路径（主机路径）
+      HOST_SHARE_SOURCE=$(docker inspect agentbox --format "{{json .Mounts}}" | grep -o "Source.:.[^,]*host-share[^,]*" | sed "s/Source.:\"\(.*\)\"/\1/")
+
+      if [ -z "$HOST_SHARE_SOURCE" ]; then
+        echo "警告：无法获取 host-share 挂载源，使用默认路径"
+        HOST_SHARE_SOURCE="$HOME"
+      fi
+
+      # 将 Windows 路径转换为 Docker 格式（反斜杠转正斜杠，压缩双斜杠）
+      HOST_SHARE_SOURCE=$(echo "$HOST_SHARE_SOURCE" | tr "\\\\" "/" | sed "s#//#/#g")
+
+      echo "Host share source: $HOST_SHARE_SOURCE"
+
+      # 设置 HICLAW_HOST_SHARE_DIR 为主机路径，让官方脚本自己构建挂载参数
+      export HICLAW_HOST_SHARE_DIR="$HOST_SHARE_SOURCE"
+
+      # 执行安装脚本
+      curl -fsSL https://higress.ai/hiclaw/install.sh -o /tmp/hiclaw-install.sh
+      chmod +x /tmp/hiclaw-install.sh
+      bash /tmp/hiclaw-install.sh manager
+      rm -f /tmp/hiclaw-install.sh
+      '
     fi
   stop_command: docker stop hiclaw-manager || true
   restart_command: docker restart hiclaw-manager
@@ -121,80 +161,92 @@ service:
 uninstall:
   - |
     set +e
-    log_info "Uninstalling HiClaw..."
+    echo "正在卸载 HiClaw..."
 
+    # 停止并移除容器
     docker stop hiclaw-manager 2>/dev/null || true
     docker rm hiclaw-manager 2>/dev/null || true
 
-    rm -rf ~/supervisor/hiclaw.conf 2>/dev/null || true
-    rm -rf ~/supervisor/hiclaw.sh 2>/dev/null || true
+    # 停止并移除所有 worker 容器
+    for w in $(docker ps -a --format '{{.Names}}' | grep "^hiclaw-worker-" || true); do
+      docker stop "${w}" 2>/dev/null || true
+      docker rm "${w}" 2>/dev/null || true
+    done
 
-# 更新命令 - 拉取最新镜像并重启容器
+    # 移除 Docker 卷
+    docker volume rm hiclaw-data 2>/dev/null || true
+
+    # 清理安装脚本
+    rm -f /tmp/hiclaw-install.sh 2>/dev/null || true
+
+    echo "HiClaw 卸载完成"
+
+# 更新命令 - 拉取官方脚本重新安装
 update:
   - |
-    bash -c '
     set +e
-
     echo "正在更新 HiClaw..."
 
-    # 检查容器是否存在
-    if ! docker ps -a --filter name=hiclaw-manager -q | grep -q .; then
-      echo "错误：容器 hiclaw-manager 不存在，请先安装"
-      exit 1
-    fi
-
-    # 备份当前配置
+    # 备份环境配置（转换为 Unix 格式并修复权限）
     if [ -f ~/hiclaw-manager.env ]; then
+      sed -i 's/\r$//' ~/hiclaw-manager.env 2>/dev/null || true
+      chown agent:agent ~/hiclaw-manager.env 2>/dev/null || true
+      chmod 644 ~/hiclaw-manager.env 2>/dev/null || true
       cp ~/hiclaw-manager.env ~/hiclaw-manager.env.bak
       echo "已备份配置文件到：~/hiclaw-manager.env.bak"
     fi
 
-    # 拉取最新镜像
-    echo "正在拉取最新镜像..."
-    if [ -n "$INSTALL_PROXY" ]; then
-      docker pull higress-registry.cn-hangzhou.cr.aliyuncs.com/higress/hiclaw-manager:latest
-    elif [ -n "$HTTPS_PROXY" ]; then
-      export HTTPS_PROXY="$HTTPS_PROXY"
-      docker pull higress-registry.cn-hangzhou.cr.aliyuncs.com/higress/hiclaw-manager:latest
-    else
-      docker pull higress-registry.cn-hangzhou.cr.aliyuncs.com/higress/hiclaw-manager:latest
-    fi
-
-    # 停止并移除旧容器
-    echo "正在更新容器..."
+    # 停止现有容器
     docker stop hiclaw-manager 2>/dev/null || true
     docker rm hiclaw-manager 2>/dev/null || true
 
-    # 启动新容器
-    docker run -d --name hiclaw-manager --restart unless-stopped \
-      --env-file ~/hiclaw-manager.env \
-      -e HOME=/root/manager-workspace \
-      -w /root/manager-workspace \
-      -v /var/run/docker.sock:/var/run/docker.sock \
-      -p ${HICLAW_GATEWAY_PORT:-18080}:8080 \
-      -p ${HICLAW_CONSOLE_PORT:-18001}:8001 \
-      -p ${HICLAW_ELEMENT_PORT:-18088}:8088 \
-      -v ~/hiclaw-manager:/root/manager-workspace \
-      -v ~/hiclaw-data:/data \
-      -v ~/hiclaw-manager.env:/root/.env \
-      -v /host-share:/host-share \
-      higress-registry.cn-hangzhou.cr.aliyuncs.com/higress/hiclaw-manager:latest
+    # 移除旧数据卷（全新安装）
+    docker volume rm hiclaw-data 2>/dev/null || true
 
-    # 验证启动
-    sleep 3
-    if docker ps --filter name=hiclaw-manager --filter status=running -q | grep -q .; then
-      echo "HiClaw 更新成功!"
-    else
-      echo "警告：更新后容器未正常运行，请检查日志"
-      exit 1
+    # 重新执行安装脚本
+    bash -c '
+    # 设置环境变量（非交互模式，使用默认值）
+    export HICLAW_NON_INTERACTIVE=1
+    # 设置数据持久化到 Docker volume
+    export HICLAW_DATA_DIR=hiclaw-data
+    # Manager 工作空间（官方默认值）
+    export HICLAW_WORKSPACE_DIR=~/hiclaw-manager
+    # 端口配置（使用官方变量名）
+    export HICLAW_PORT_GATEWAY=${HICLAW_PORT_GATEWAY:-18080}
+    export HICLAW_PORT_CONSOLE=${HICLAW_PORT_CONSOLE:-18001}
+    export HICLAW_PORT_ELEMENT_WEB=${HICLAW_PORT_ELEMENT_WEB:-18088}
+    # LLM 提供商配置（非交互模式需要预设）
+    export HICLAW_LLM_PROVIDER=${HICLAW_LLM_PROVIDER:-qwen}
+    export HICLAW_LLM_MODEL=${HICLAW_LLM_MODEL:-qwen3.5-plus}
+    export HICLAW_LLM_API_KEY=${HICLAW_LLM_API_KEY:-${DASHSCOPE_API_KEY:-sk-dummy-key-for-test}}
+
+    # 获取 agentbox 容器的 /host-share 挂载源路径（主机路径）
+    HOST_SHARE_SOURCE=$(docker inspect agentbox --format "{{json .Mounts}}" | grep -o "Source.:.[^,]*host-share[^,]*" | sed "s/Source.:\"\(.*\)\"/\1/")
+
+    if [ -z "$HOST_SHARE_SOURCE" ]; then
+      echo "警告：无法获取 host-share 挂载源，使用默认路径"
+      HOST_SHARE_SOURCE="$HOME"
     fi
+
+    # 将 Windows 路径转换为 Docker 格式（反斜杠转正斜杠，压缩双斜杠）
+    HOST_SHARE_SOURCE=$(echo "$HOST_SHARE_SOURCE" | tr "\\\\" "/" | sed "s#//#/#g")
+
+    echo "Host share source: $HOST_SHARE_SOURCE"
+
+    # 设置 HICLAW_HOST_SHARE_DIR 为主机路径，让官方脚本自己构建挂载参数
+    export HICLAW_HOST_SHARE_DIR="$HOST_SHARE_SOURCE"
+
+    curl -fsSL https://higress.ai/hiclaw/install.sh -o /tmp/hiclaw-install.sh
+    chmod +x /tmp/hiclaw-install.sh
+    bash /tmp/hiclaw-install.sh manager
+    rm -f /tmp/hiclaw-install.sh
     '
 
 # 服务端口信息（容器内端口：服务名）
 ports:
-  - 8080: Higress Gateway (映射到 ${HICLAW_GATEWAY_PORT:-18080})
-  - 8001: Higress Console (映射到 ${HICLAW_CONSOLE_PORT:-18001})
-  - 8088: Element Web (映射到 ${HICLAW_ELEMENT_PORT:-18088})
+  - 8080: Higress Gateway (映射到 ${HICLAW_PORT_GATEWAY:-18080})
+  - 8001: Higress Console (映射到 ${HICLAW_PORT_CONSOLE:-18001})
+  - 8088: Element Web (映射到 ${HICLAW_PORT_ELEMENT_WEB:-18088})
 
 # 标签
 tags:
