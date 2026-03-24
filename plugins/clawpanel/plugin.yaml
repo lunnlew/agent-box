@@ -62,7 +62,7 @@ post_install:
     echo "  export CLAWPANEL_PORT=1420"
     echo ""
     echo "启动服务:"
-    echo "  agentbox start-service clawpanel"
+    echo "  agentbox start clawpanel"
     echo ""
     echo "或直接运行:"
     echo "  cd ~/tools/clawpanel && npm run serve"

@@ -119,7 +119,7 @@ docker exec -it agentbox bash
 | **iflow** | `iflow` | iFlow AI 编程助手 | `IFLOW_API_KEY` |
 | **docker** | `docker` | Docker 容器管理工具 | - |
 
-### Web 服务 (8 个)
+### Web 服务 (9 个)
 
 通过浏览器访问，常驻后台服务。
 
@@ -137,11 +137,12 @@ docker exec -it agentbox bash
 | **openclaw-manager** | 6081 | http://localhost:6081/vnc.html | OpenClaw 桌面管理工具 (非官方，VNC) |
 | **novnc-base** | - | - | noVNC 基础显示服务 |
 
-### Docker 容器服务 (1 个)
+### Docker 容器服务 (2 个)
 
 | 插件 | 端口 | 说明 |
 |-----|------|------|
 | **hiclaw** | 18080/18001/18088 | HiClaw AI Agent 平台（独立 Docker 容器） |
+| **deer-flow** | 2026 | DeerFlow Super Agent Harness (sub-agents, memory, sandbox) |
 
 ---
 
@@ -184,16 +185,16 @@ agentbox restore-links
 
 ```bash
 # 启动所有服务（容错模式）
-agentbox start-services
+agentbox start-all
 
 # 单个服务管理
-agentbox start-service <name>
-agentbox stop-service <name>
-agentbox restart-service <name>
-agentbox service-status <name>
+agentbox start <name>
+agentbox stop <name>
+agentbox restart <name>
+agentbox ps <name>
 
 # 查看所有服务状态
-agentbox service-status
+agentbox ps
 ```
 
 ### 镜像源配置
@@ -240,6 +241,7 @@ Dashboard 提供：
 | **HiClaw Gateway** | http://localhost:18080 | - | Higress 网关 |
 | **HiClaw Console** | http://localhost:18001 | - | 管理控制台 |
 | **HiClaw Element** | http://localhost:18088 | - | Matrix 客户端 |
+| **DeerFlow** | http://localhost:2026 | - | Super Agent Harness |
 
 ---
 
@@ -258,7 +260,7 @@ agent-box/
 │   ├── entrypoint.sh           # 容器入口脚本（容错设计）
 │   ├── lib.sh                  # 共享函数库
 │   └── plugin-manager.sh       # 插件管理 CLI (agentbox)
-├── plugins/                    # 插件定义目录 (17 个插件)
+├── plugins/                    # 插件定义目录 (18 个插件)
 │   ├── board/                  # Dashboard 服务
 │   ├── openclaw/               # OpenClaw 网关
 │   ├── vscode-server/          # VS Code Server
@@ -268,6 +270,7 @@ agent-box/
 │   ├── novnc-base/             # noVNC 基础服务
 │   ├── copaw/                  # CoPaw 网关
 │   ├── hiclaw/                 # HiClaw AI Agent 平台
+│   ├── deer-flow/              # DeerFlow Super Agent Harness
 │   ├── claude-code/            # Claude Code CLI
 │   ├── cursor-cli/             # Cursor CLI
 │   ├── codex/                  # Codex CLI
@@ -363,6 +366,7 @@ CLAWPORT_PORT=3000        # ClawPort UI
 CLAWPANEL_PORT=1420       # ClawPanel
 SKILLS_MANAGER_NOVNC_PORT=6080
 OPENCLAW_MANAGER_NOVNC_PORT=6081
+DEERFLOW_PORT=2026        # DeerFlow Gateway
 ```
 
 ### 插件配置 (plugin.yaml)
@@ -533,7 +537,7 @@ docker exec agentbox tail -f ~/logs/<service>.log
 docker exec agentbox supervisorctl -c ~/supervisor/supervisord.conf status
 
 # 手动启动服务
-docker exec agentbox agentbox start-service <service>
+docker exec agentbox agentbox start <service>
 ```
 
 ### 容器重启问题
@@ -552,7 +556,7 @@ docker logs agentbox | grep "summary"
 # 手动重试失败插件
 docker exec -it agentbox bash
 agentbox install-all
-agentbox start-services
+agentbox start-all
 ```
 
 ### 查看服务状态
@@ -607,7 +611,7 @@ docker builder prune -f
 agentbox install-all
 
 # 启动所有服务
-agentbox start-services
+agentbox start-start-all
 
 # 查看系统状态
 agentbox status
@@ -624,6 +628,6 @@ MIT
 
 ---
 
-**最后更新:** 2026-03-15
-**版本:** 1.1.0
-**插件数量:** 17 (CLI 工具 8 个 + Web 服务 8 个 + Docker 容器 1 个)
+**最后更新:** 2026-03-23
+**版本:** 1.1.2
+**插件数量:** 20 (CLI 工具 8 个 + Web 服务 10 个 + Docker 容器 2 个)

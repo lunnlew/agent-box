@@ -53,11 +53,11 @@ AgentBox Plugin Manager v1.0.0
   help                      显示此帮助信息
 
 服务管理:
-  start-service <name>      启动指定插件服务
-  stop-service <name>       停止指定插件服务
-  restart-service <name>    重启指定插件服务
-  service-status <name>     查看指定插件服务状态
-  start-services            启动所有已启用插件的服务
+  start <name>              启动指定插件服务
+  stop <name>               停止指定插件服务
+  restart <name>            重启指定插件服务
+  ps <name>                 查看指定插件服务状态
+  start-all                 启动所有已启用插件的服务
 
 镜像源类型 (set-mirror):
   npm      NPM 镜像源
@@ -72,9 +72,9 @@ AgentBox Plugin Manager v1.0.0
   agentbox install-all
   agentbox list
   agentbox status
-  agentbox start-service openclaw
-  agentbox service-status openclaw
-  agentbox restart-service vscode-server
+  agentbox start openclaw
+  agentbox ps openclaw
+  agentbox restart vscode-server
   agentbox mirrors
   agentbox set-mirror npm https://registry.npmmirror.com
 
@@ -310,10 +310,25 @@ execute_single_command() {
     # 使用 --maxsockets 1 避免并发请求导致的问题
     safe_cmd=$(echo "$safe_cmd" | sed 's/npm install -g/npm install -g --maxsockets 1/g')
 
+    # 使用临时文件执行多行脚本，避免 bash -c 的换行符问题
+    local temp_script=$(mktemp)
+    cat > "$temp_script" << 'SCRIPT_HEADER'
+#!/bin/bash
+# Log functions
+log_info(){ echo -e "\033[0;34m[INFO]\033[0m $*"; }
+log_success(){ echo -e "\033[0;32m[SUCCESS]\033[0m $*"; }
+log_warning(){ echo -e "\033[1;33m[WARNING]\033[0m $*"; }
+log_error(){ echo -e "\033[0;31m[ERROR]\033[0m $*"; }
+SCRIPT_HEADER
+    echo "" >> "$temp_script"
+    echo "$safe_cmd" >> "$temp_script"
+    chmod +x "$temp_script"
+
     # 使用 timeout 命令执行，避免无限挂起
-    # 定义日志函数，确保在子 shell 中也可用
-    local setup_functions='log_info(){ echo -e "\033[0;34m[INFO]\033[0m $*"; }; log_success(){ echo -e "\033[0;32m[SUCCESS]\033[0m $*"; }; log_warning(){ echo -e "\033[1;33m[WARNING]\033[0m $*"; }; log_error(){ echo -e "\033[0;31m[ERROR]\033[0m $*"; };'
-    output=$(timeout "$timeout_seconds" bash -c "$setup_functions $safe_cmd" 2>&1) && exit_code=0 || exit_code=$?
+    output=$(timeout "$timeout_seconds" "$temp_script" 2>&1) && exit_code=0 || exit_code=$?
+
+    # 清理临时文件
+    rm -f "$temp_script"
 
     if [ $exit_code -eq 124 ]; then
         # timeout 命令的退出码 124 表示超时
@@ -528,12 +543,9 @@ uninstall_plugin() {
 
     local commands=$(get_yaml_list_commands "$plugin_file" "uninstall")
     if [ -n "$commands" ]; then
-        while IFS= read -r cmd; do
-            if [ -n "$cmd" ]; then
-                log_info "Executing: $(echo "$cmd" | head -1)"
-                eval "$cmd"
-            fi
-        done <<< "$commands"
+        # 将命令作为单个脚本块执行（支持 if/else/fi 等多行语法）
+        log_info "Executing uninstall script..."
+        execute_single_command "$commands" "$plugin_name" "$plugin_file"
     fi
 
     log_success "Plugin uninstalled: $plugin_name"
@@ -559,12 +571,9 @@ update_plugin() {
         return $?
     fi
 
-    while IFS= read -r cmd; do
-        if [ -n "$cmd" ]; then
-            log_info "Executing: $(echo "$cmd" | head -1)"
-            eval "$cmd"
-        fi
-    done <<< "$commands"
+    # 将命令作为单个脚本块执行（支持 if/else/fi 等多行语法）
+    log_info "Executing update script..."
+    execute_single_command "$commands" "$plugin_name" "$plugin_file"
 
     log_success "Plugin updated: $plugin_name"
 }
@@ -1114,6 +1123,12 @@ EOF
 
 # ⚠️ 不使用 set -e，避免脚本失败
 
+# Log functions
+log_info(){ echo -e "\033[0;34m[INFO]\033[0m $*"; }
+log_success(){ echo -e "\033[0;32m[SUCCESS]\033[0m $*"; }
+log_warning(){ echo -e "\033[1;33m[WARNING]\033[0m $*"; }
+log_error(){ echo -e "\033[0;31m[ERROR]\033[0m $*"; }
+
 SCRIPT_HEADER
 
             echo "$service_cmd" >> "$script_file"
@@ -1478,7 +1493,7 @@ start_all_services() {
     
     if [ ${#failed_services[@]} -gt 0 ]; then
         log_warning "Failed services: ${failed_services[*]}"
-        log_info "You can retry failed services individually with: agentbox start-service <plugin-name>"
+        log_info "You can retry failed services individually with: agentbox start <plugin-name>"
     fi
 
     log_success "Service startup completed"
@@ -1598,22 +1613,22 @@ main() {
             [ "$1" == "--force" ] && force="true"
             install_all_plugins "$force"
             ;;
-        start-services)
+        start-all)
             start_all_services
             ;;
-        start-service)
+        start)
             [ -z "$1" ] && { log_error "Plugin name required"; show_help; exit 1; }
             start_plugin_service "$1"
             ;;
-        stop-service)
+        stop)
             [ -z "$1" ] && { log_error "Plugin name required"; show_help; exit 1; }
             stop_plugin_service "$1"
             ;;
-        restart-service)
+        restart)
             [ -z "$1" ] && { log_error "Plugin name required"; show_help; exit 1; }
             restart_plugin_service "$1"
             ;;
-        service-status)
+        ps)
             [ -z "$1" ] && { log_error "Plugin name required"; show_help; exit 1; }
             service_status "$1"
             ;;

@@ -66,7 +66,7 @@ post_install:
     echo "  export OPENCLAW_AGENT=main"
     echo ""
     echo "启动服务:"
-    echo "  agentbox start-service openclaw-dashboard"
+    echo "  agentbox start openclaw-dashboard"
     echo ""
     echo "或直接运行:"
     echo "  cd ~/tools/openclaw-dashboard && node server.js"

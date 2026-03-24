@@ -189,7 +189,7 @@ start_services() {
 
     if command -v agentbox &> /dev/null; then
         # ⚠️ 使用 || true 确保即使启动失败也不退出
-        agentbox start-services || {
+        agentbox start-all || {
             log_warning "Some plugin services failed to start, continuing..."
         }
     else
@@ -216,10 +216,21 @@ main_root() {
 
 # Agent 阶段
 main_agent() {
+    # 修复 Docker 配置目录权限（重要！）
+    # 防止 root 阶段创建的文件导致 agent 用户权限问题
+    mkdir -p ~/.docker
+    chown agent:agent ~/.docker 2>/dev/null || true
+    chmod 755 ~/.docker 2>/dev/null || true
+    if [ ! -f ~/.docker/config.json ]; then
+        echo '{}' > ~/.docker/config.json
+    fi
+    chown agent:agent ~/.docker/config.json 2>/dev/null || true
+    chmod 644 ~/.docker/config.json 2>/dev/null || true
+
     # 配置镜像源（失败不影响后续）
     configure_mirrors || log_warning "Mirror configuration failed"
     show_mirror_config
-    
+
     # 检查依赖（失败不影响后续）
     check_dependencies || log_warning "Dependency check failed"
 

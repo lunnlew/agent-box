@@ -82,3 +82,7 @@ plugins:
   # xvfb - 已禁用，各应用使用独立 Xvfb 实例
   # - name: xvfb
   #   enabled: false
+
+  # DeerFlow - Super Agent Harness (sub-agents, memory, sandbox, skills)
+  - name: deer-flow
+    enabled: true

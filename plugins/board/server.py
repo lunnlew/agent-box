@@ -198,6 +198,18 @@ SERVICES = {
         'badge': 'new',
         'category': 'ai',
         'check_host': '127.0.0.1'
+    },
+    'deer-flow': {
+        'internal_port': 2026,
+        'external_port': int(os.environ.get('DEERFLOW_PORT', 2026)),
+        'name': 'DeerFlow',
+        'icon': '🦌',
+        'desc': 'DeerFlow - 开源 Super Agent Harness（sub-agents、memory、sandbox）',
+        'path': '',
+        'color': 'green',
+        'badge': 'new',
+        'category': 'ai',
+        'check_host': 'host.docker.internal'
     }
 }
 

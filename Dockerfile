@@ -1,5 +1,5 @@
 # AgentBox Dockerfile
-# 基于Ubuntu 22.04的可插拔AI Agent工具集成容器
+# 基于 Ubuntu 22.04 的可插拔 AI Agent 工具集成容器
 
 FROM ubuntu:22.04
 
@@ -43,16 +43,29 @@ RUN if [ -n "$UBUNTU_MIRROR" ]; then \
         sed -i "s@security.ubuntu.com@${MIRROR_URL}@g" /etc/apt/sources.list; \
     fi
 
-# 安装系统依赖
+# 先安装基础工具 (curl, gpg 等)，用于后续 GPG 密钥导入
 RUN apt-get update && apt-get install -y \
-    # 基础工具
     curl \
     wget \
     git \
     gnupg \
     ca-certificates \
+    # 清理缓存
+    && rm -rf /var/lib/apt/lists/* \
+    && apt-get clean
+
+# 下载并导入 GPG 密钥 (提前执行，避免后续安装失败)
+RUN mkdir -p /etc/apt/keyrings && \
+    curl -fsSL https://deb.nodesource.com/setup_22.x | bash - && \
+    curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg && \
+    echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | tee /etc/apt/sources.list.d/docker.list > /dev/null
+
+# 安装系统依赖
+RUN apt-get update && apt-get install -y \
+    # 已安装：curl, wget, git, gnupg, ca-certificates
+    # 基础工具
     gosu \
-    # Python环境
+    # Python 环境
     python3 \
     python3-pip \
     python3-venv \
@@ -86,9 +99,10 @@ RUN apt-get update && apt-get install -y \
     fonts-wqy-microhei \
     fonts-noto-cjk \
     fonts-noto-cjk-extra \
-    # Node.js环境 (NodeSource) - Node.js 22 LTS
-    && curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
-    && apt-get install -y nodejs \
+    # Node.js 环境 (NodeSource) - Node.js 22 LTS
+    nodejs \
+    # Docker Compose (插件版，支持 docker compose 子命令)
+    docker-compose-plugin \
     # 清理缓存
     && rm -rf /var/lib/apt/lists/* \
     && apt-get clean
@@ -124,7 +138,7 @@ RUN npm_config_registry=$(npm config get registry) && \
 # 安装 uv（快速 Python 包管理器）
 RUN curl -LsSf https://astral.sh/uv/install.sh | sh
 
-# 创建非root用户和docker组
+# 创建非 root 用户和 docker 组
 RUN groupadd -g 999 docker && \
     useradd -m -s /bin/bash -u 1000 -G docker agent
 
@@ -143,7 +157,7 @@ RUN mkdir -p tools plugins logs .npm .pip supervisor .cache/uv && \
 COPY scripts/ /opt/
 RUN chmod +x /opt/*.sh
 
-# 创建CLI软链接
+# 创建 CLI 软链接
 RUN ln -s /opt/plugin-manager.sh /usr/local/bin/agentbox
 
 # 容器以 root 启动，entrypoint 中切换到 agent 用户

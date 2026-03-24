@@ -125,7 +125,7 @@ post_install:
     echo "  OPENCLAW_GATEWAY_PORT=18789"
     echo ""
     echo "启动服务:"
-    echo "  agentbox start-service clawport-ui"
+    echo "  agentbox start clawport-ui"
     echo ""
     echo "或手动运行:"
     echo "  clawport dev"
