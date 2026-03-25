@@ -20,15 +20,12 @@ install:
     fi
   # 下载官方安装脚本并执行（在非交互模式下需要预设 LLM 配置）
   - |
-    bash -c '
     set -e
 
     # 设置环境变量（非交互模式，使用默认值）
     export HICLAW_NON_INTERACTIVE=1
     # 设置数据持久化到 Docker volume
     export HICLAW_DATA_DIR=hiclaw-data
-    # Manager 工作空间（官方默认值）
-    export HICLAW_WORKSPACE_DIR=~/hiclaw-manager
     # 端口配置（使用官方变量名）
     export HICLAW_PORT_GATEWAY=${HICLAW_PORT_GATEWAY:-18080}
     export HICLAW_PORT_CONSOLE=${HICLAW_PORT_CONSOLE:-18001}
@@ -42,8 +39,27 @@ install:
     curl -fsSL https://higress.ai/hiclaw/install.sh -o /tmp/hiclaw-install.sh
     chmod +x /tmp/hiclaw-install.sh
 
+    # 获取 agentbox 容器的 /home/agent 挂载源路径（主机路径）
+    AGENT_HOME_SOURCE=$(docker inspect agentbox --format '{{json .Mounts}}' | tr ',' '\n' | grep -B1 '"Destination":"/home/agent"$' | grep '"Source"' | sed 's/.*"Source":"\([^"]*\)".*/\1/' | head -1)
+
+    if [ -z "$AGENT_HOME_SOURCE" ]; then
+      echo "警告：无法获取 agent home 挂载源，使用默认路径"
+      AGENT_HOME_SOURCE="$HOME"
+    fi
+
+    # 将 Windows 路径转换为 Docker 格式（反斜杠转正斜杠，压缩双斜杠）
+    AGENT_HOME_SOURCE=$(python3 -c "import sys,re; s=sys.argv[1]; print(re.sub(r'/+', '/', s.replace(chr(92), '/')))" "$AGENT_HOME_SOURCE")
+
+    # 如果 .env 中已配置 HICLAW_WORKSPACE_DIR 则使用配置的值，否则自动构建
+    if [ -n "$HICLAW_WORKSPACE_DIR" ]; then
+      echo "使用配置的 HICLAW_WORKSPACE_DIR: $HICLAW_WORKSPACE_DIR"
+    else
+      export HICLAW_WORKSPACE_DIR="${AGENT_HOME_SOURCE}/hiclaw-manager"
+      echo "自动设置 HICLAW_WORKSPACE_DIR: $HICLAW_WORKSPACE_DIR"
+    fi
+
     # 获取 agentbox 容器的 /host-share 挂载源路径（主机路径）
-    HOST_SHARE_SOURCE=$(docker inspect agentbox --format "{{json .Mounts}}" | grep -o "Source.:.[^,]*host-share[^,]*" | sed "s/Source.:\"\(.*\)\"/\1/")
+    HOST_SHARE_SOURCE=$(docker inspect agentbox --format '{{json .Mounts}}' | grep -o "Source.:.[^,]*host-share[^,]*" | sed "s/Source.:\"\(.*\)\"/\1/")
 
     if [ -z "$HOST_SHARE_SOURCE" ]; then
       echo "警告：无法获取 host-share 挂载源，使用默认路径"
@@ -51,7 +67,7 @@ install:
     fi
 
     # 将 Windows 路径转换为 Docker 格式（反斜杠转正斜杠，压缩双斜杠）
-    HOST_SHARE_SOURCE=$(echo "$HOST_SHARE_SOURCE" | tr "\\\\" "/" | sed "s#//#/#g")
+    HOST_SHARE_SOURCE=$(python3 -c "import sys,re; s=sys.argv[1]; print(re.sub(r'/+', '/', s.replace(chr(92), '/')))" "$HOST_SHARE_SOURCE")
 
     echo "Host share source: $HOST_SHARE_SOURCE"
 
@@ -63,13 +79,15 @@ install:
 
     # 清理
     rm -f /tmp/hiclaw-install.sh
-    '
 
 # 环境变量配置（使用官方变量名）
 env:
   HICLAW_PORT_GATEWAY: export HICLAW_PORT_GATEWAY=${HICLAW_PORT_GATEWAY:-18080}
   HICLAW_PORT_CONSOLE: export HICLAW_PORT_CONSOLE=${HICLAW_PORT_CONSOLE:-18001}
   HICLAW_PORT_ELEMENT_WEB: export HICLAW_PORT_ELEMENT_WEB=${HICLAW_PORT_ELEMENT_WEB:-18088}
+  # HICLAW_WORKSPACE_DIR 仅在 .env 中显式配置时才使用（用于自定义主机路径）
+  # 否则会自动从 agentbox 容器的 /home/agent 挂载源路径构建
+  HICLAW_WORKSPACE_DIR: export HICLAW_WORKSPACE_DIR=${HICLAW_WORKSPACE_DIR:-}
 
 # 需要持久化的目录（由官方脚本管理）
 volumes:
@@ -115,13 +133,10 @@ service:
         chmod 644 ~/hiclaw-manager.env 2>/dev/null || true
       fi
 
-      bash -c '
       # 设置环境变量（非交互模式，使用默认值）
       export HICLAW_NON_INTERACTIVE=1
       # 设置数据持久化到 Docker volume
       export HICLAW_DATA_DIR=hiclaw-data
-      # Manager 工作空间（官方默认值）
-      export HICLAW_WORKSPACE_DIR=~/hiclaw-manager
       # 端口配置（使用官方变量名）
       export HICLAW_PORT_GATEWAY=${HICLAW_PORT_GATEWAY:-18080}
       export HICLAW_PORT_CONSOLE=${HICLAW_PORT_CONSOLE:-18001}
@@ -131,8 +146,27 @@ service:
       export HICLAW_LLM_MODEL=${HICLAW_LLM_MODEL:-qwen3.5-plus}
       export HICLAW_LLM_API_KEY=${HICLAW_LLM_API_KEY:-${DASHSCOPE_API_KEY:-sk-dummy-key-for-test}}
 
+      # 获取 agentbox 容器的 /home/agent 挂载源路径（主机路径）
+      AGENT_HOME_SOURCE=$(docker inspect agentbox --format '{{json .Mounts}}' | tr ',' '\n' | grep -B1 '"Destination":"/home/agent"$' | grep '"Source"' | sed 's/.*"Source":"\([^"]*\)".*/\1/' | head -1)
+
+      if [ -z "$AGENT_HOME_SOURCE" ]; then
+        echo "警告：无法获取 agent home 挂载源，使用默认路径"
+        AGENT_HOME_SOURCE="$HOME"
+      fi
+
+      # 将 Windows 路径转换为 Docker 格式（反斜杠转正斜杠，压缩双斜杠）
+      AGENT_HOME_SOURCE=$(python -c "import sys,re; s=sys.argv[1]; print(re.sub(r'/+', '/', s.replace(chr(92), '/')))" "$AGENT_HOME_SOURCE")
+
+      # 如果 .env 中已配置 HICLAW_WORKSPACE_DIR 则使用配置的值，否则自动构建
+      if [ -n "$HICLAW_WORKSPACE_DIR" ]; then
+        echo "使用配置的 HICLAW_WORKSPACE_DIR: $HICLAW_WORKSPACE_DIR"
+      else
+        export HICLAW_WORKSPACE_DIR="${AGENT_HOME_SOURCE}/hiclaw-manager"
+        echo "自动设置 HICLAW_WORKSPACE_DIR: $HICLAW_WORKSPACE_DIR"
+      fi
+
       # 获取 agentbox 容器的 /host-share 挂载源路径（主机路径）
-      HOST_SHARE_SOURCE=$(docker inspect agentbox --format "{{json .Mounts}}" | grep -o "Source.:.[^,]*host-share[^,]*" | sed "s/Source.:\"\(.*\)\"/\1/")
+      HOST_SHARE_SOURCE=$(docker inspect agentbox --format '{{json .Mounts}}' | grep -o "Source.:.[^,]*host-share[^,]*" | sed "s/Source.:\"\(.*\)\"/\1/")
 
       if [ -z "$HOST_SHARE_SOURCE" ]; then
         echo "警告：无法获取 host-share 挂载源，使用默认路径"
@@ -140,7 +174,7 @@ service:
       fi
 
       # 将 Windows 路径转换为 Docker 格式（反斜杠转正斜杠，压缩双斜杠）
-      HOST_SHARE_SOURCE=$(echo "$HOST_SHARE_SOURCE" | tr "\\\\" "/" | sed "s#//#/#g")
+      HOST_SHARE_SOURCE=$(python -c "import sys,re; s=sys.argv[1]; print(re.sub(r'/+', '/', s.replace(chr(92), '/')))" "$HOST_SHARE_SOURCE")
 
       echo "Host share source: $HOST_SHARE_SOURCE"
 
@@ -152,7 +186,6 @@ service:
       chmod +x /tmp/hiclaw-install.sh
       bash /tmp/hiclaw-install.sh manager
       rm -f /tmp/hiclaw-install.sh
-      '
     fi
   stop_command: docker stop hiclaw-manager || true
   restart_command: docker restart hiclaw-manager
@@ -204,13 +237,10 @@ update:
     docker volume rm hiclaw-data 2>/dev/null || true
 
     # 重新执行安装脚本
-    bash -c '
     # 设置环境变量（非交互模式，使用默认值）
     export HICLAW_NON_INTERACTIVE=1
     # 设置数据持久化到 Docker volume
     export HICLAW_DATA_DIR=hiclaw-data
-    # Manager 工作空间（官方默认值）
-    export HICLAW_WORKSPACE_DIR=~/hiclaw-manager
     # 端口配置（使用官方变量名）
     export HICLAW_PORT_GATEWAY=${HICLAW_PORT_GATEWAY:-18080}
     export HICLAW_PORT_CONSOLE=${HICLAW_PORT_CONSOLE:-18001}
@@ -220,8 +250,27 @@ update:
     export HICLAW_LLM_MODEL=${HICLAW_LLM_MODEL:-qwen3.5-plus}
     export HICLAW_LLM_API_KEY=${HICLAW_LLM_API_KEY:-${DASHSCOPE_API_KEY:-sk-dummy-key-for-test}}
 
+    # 获取 agentbox 容器的 /home/agent 挂载源路径（主机路径）
+    AGENT_HOME_SOURCE=$(docker inspect agentbox --format '{{json .Mounts}}' | tr ',' '\n' | grep -B1 '"Destination":"/home/agent"$' | grep '"Source"' | sed 's/.*"Source":"\([^"]*\)".*/\1/' | head -1)
+
+    if [ -z "$AGENT_HOME_SOURCE" ]; then
+      echo "警告：无法获取 agent home 挂载源，使用默认路径"
+      AGENT_HOME_SOURCE="$HOME"
+    fi
+
+    # 将 Windows 路径转换为 Docker 格式（反斜杠转正斜杠，压缩双斜杠）
+    AGENT_HOME_SOURCE=$(python3 -c "import sys,re; s=sys.argv[1]; print(re.sub(r'/+', '/', s.replace(chr(92), '/')))" "$AGENT_HOME_SOURCE")
+
+    # 如果 .env 中已配置 HICLAW_WORKSPACE_DIR 则使用配置的值，否则自动构建
+    if [ -n "$HICLAW_WORKSPACE_DIR" ]; then
+      echo "使用配置的 HICLAW_WORKSPACE_DIR: $HICLAW_WORKSPACE_DIR"
+    else
+      export HICLAW_WORKSPACE_DIR="${AGENT_HOME_SOURCE}/hiclaw-manager"
+      echo "自动设置 HICLAW_WORKSPACE_DIR: $HICLAW_WORKSPACE_DIR"
+    fi
+
     # 获取 agentbox 容器的 /host-share 挂载源路径（主机路径）
-    HOST_SHARE_SOURCE=$(docker inspect agentbox --format "{{json .Mounts}}" | grep -o "Source.:.[^,]*host-share[^,]*" | sed "s/Source.:\"\(.*\)\"/\1/")
+    HOST_SHARE_SOURCE=$(docker inspect agentbox --format '{{json .Mounts}}' | grep -o "Source.:.[^,]*host-share[^,]*" | sed "s/Source.:\"\(.*\)\"/\1/")
 
     if [ -z "$HOST_SHARE_SOURCE" ]; then
       echo "警告：无法获取 host-share 挂载源，使用默认路径"
@@ -229,7 +278,7 @@ update:
     fi
 
     # 将 Windows 路径转换为 Docker 格式（反斜杠转正斜杠，压缩双斜杠）
-    HOST_SHARE_SOURCE=$(echo "$HOST_SHARE_SOURCE" | tr "\\\\" "/" | sed "s#//#/#g")
+    HOST_SHARE_SOURCE=$(python3 -c "import sys,re; s=sys.argv[1]; print(re.sub(r'/+', '/', s.replace(chr(92), '/')))" "$HOST_SHARE_SOURCE")
 
     echo "Host share source: $HOST_SHARE_SOURCE"
 
@@ -240,7 +289,6 @@ update:
     chmod +x /tmp/hiclaw-install.sh
     bash /tmp/hiclaw-install.sh manager
     rm -f /tmp/hiclaw-install.sh
-    '
 
 # 服务端口信息（容器内端口：服务名）
 ports:
