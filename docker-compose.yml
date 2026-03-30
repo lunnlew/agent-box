@@ -1,5 +1,22 @@
 version: '3.8'
 
+# ============================================================
+# 数据管理策略
+# ============================================================
+# 所有数据通过 ./data 目录挂载到容器内 ~/ (即 /home/agent)
+#
+# volumes 格式：
+#   - ~/path              # 直接创建目录
+#   - ~/path: /data/xxx   # 创建符号链接 ~/path → /data/xxx
+#
+# 示例：
+#   volumes:
+#     - ~/.claude                    # 直接使用
+#     - ~/workspace: /shared/work    # 符号链接到共享位置
+#
+# 映射缓存：~/.volume-map（记录卷声明关系）
+# ============================================================
+
 services:
   agentbox:
     build:
@@ -16,17 +33,15 @@ services:
     env_file:
       - .env
     volumes:
-      # 主数据目录
-      - ./data:/home/agent
-      # 插件配置文件
+      # 主数据目录（所有插件数据）
+      - ./data:/home/agent:rw
+      # 插件配置文件（只读）
       - ./config/plugins.yaml:/home/agent/config/plugins.yaml:ro
-      # 插件定义目录
-      - ./plugins:/home/agent/plugins-config:ro
-      # Docker socket (容器内可直接使用 Docker)
+      # 插件定义目录（可读写，容器内添加执行权限）
+      - ./plugins:/home/agent/plugins-config:rw
+      # Docker socket（容器内可直接使用 Docker，支持 DinD 插件）
       - /var/run/docker.sock:/var/run/docker.sock
-      # 工作目录（持久化用户数据和日志）
-      - ./data:/home/agent/workspace/agent-box/data
-      # 共享目录
+      # 共享目录（主机-容器文件交换）
       - ./host-share:/host-share
     extra_hosts:
       - "host.docker.internal:host-gateway"

@@ -100,12 +100,12 @@ env:
   OPENCLAW_GATEWAY_TOKEN: optional
   OPENCLAW_GATEWAY_BIND: export OPENCLAW_GATEWAY_BIND="lan"
   OPENCLAW_SILENT_PAIRING: export OPENCLAW_SILENT_PAIRING="true"
-  OPENCLAW_EXTRA_MOUNTS: export OPENCLAW_EXTRA_MOUNTS="/host-share:/host-share:rw"
   PATH_APPEND: ~/tools/bin
 
 # 需要持久化的目录
+# OpenClaw 核心数据，多插件共享
 volumes:
-  - ~/.openclaw: OpenClaw 配置和数据
+  - ~/.openclaw
 
 # 服务配置（Gateway 守护进程）
 service:

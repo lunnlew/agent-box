@@ -41,7 +41,6 @@
 | **缓存** | `/home/agent/cache` | 模型缓存、临时文件 |
 | **配置** | `/home/agent/.config` | 应用配置 |
 | **日志** | `/home/agent/logs` | 服务日志 |
-| **插件数据** | `/home/agent/plugins-data` | 插件隔离数据 |
 
 ### 服务管理
 
@@ -322,7 +321,6 @@ agent-box/
 | `/home/agent/cache` | `./data/cache` | 模型缓存、临时文件 |
 | `/home/agent/.config` | `./data/.config` | 配置文件 |
 | `/home/agent/logs` | `./data/logs` | 服务日志 |
-| `/home/agent/plugins-data` | `./data/plugins-data` | 插件隔离数据 |
 | `/host-share` | `./host-share` | 宿主机共享目录 |
 
 ---

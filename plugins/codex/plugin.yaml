@@ -81,7 +81,7 @@ env:
 
 # 需要持久化的目录
 volumes:
-  - ~/.codex: Codex 配置和缓存
+  - ~/.codex
 
 # 健康检查
 healthcheck:

@@ -47,9 +47,9 @@ env:
   GDK_BACKEND: export GDK_BACKEND=x11
   NO_AT_BRIDGE: export NO_AT_BRIDGE=1
 
-# 需要持久化的目录
+# 持久化目录（脚本存放在 tools 目录）
 volumes:
-  - ~/plugins-data/xvfb: Xvfb 脚本目录
+  - ~/tools/xvfb-scripts
 
 # 服务配置（基础显示服务）
 service:

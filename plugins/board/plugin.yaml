@@ -17,13 +17,6 @@ install:
 
     # 创建必要目录
     mkdir -p ~/logs
-    mkdir -p ~/plugins-data/board
-
-    # 复制启动脚本到可写目录
-    if [ -f /home/agent/plugins-config/board/start-board.sh ]; then
-      cp /home/agent/plugins-config/board/start-board.sh ~/plugins-data/board/
-      chmod +x ~/plugins-data/board/start-board.sh
-    fi
 
     log_success "Dashboard installed successfully"
 
@@ -36,9 +29,7 @@ post_install:
     echo "============================================"
     echo ""
     echo "访问地址：http://localhost:${BOARD_PORT:-8888}"
-    echo ""
-    echo "配置文件：~/plugins-config/board/"
-    echo "数据目录：~/plugins-data/board"
+    echo "配置目录：~/plugins-config/board/"
     echo "日志文件：~/logs/board.log"
     echo "============================================"
     echo ""
@@ -48,8 +39,7 @@ env:
   BOARD_PORT: export BOARD_PORT=${BOARD_PORT:-8888}
 
 # 需要持久化的目录
-volumes:
-  - ~/plugins-data/board: Dashboard 数据目录
+volumes: []
 
 # 服务配置（Web 面板服务）
 service:
@@ -62,39 +52,31 @@ service:
   # 最大重启次数
   max_restarts: 3
   # 启动命令
-  command: /home/agent/plugins-data/board/start-board.sh
+  command: /home/agent/plugins-config/board/start-board.sh
   # ⚠️ 注意：daemon 服务使用 supervisorctl stop/start/restart
   # 不配置 stop_command 和 restart_command
 
 # 健康检查
 healthcheck:
-  command: test -f ~/plugins-data/board/start-board.sh
+  command: test -f ~/plugins-config/board/start-board.sh
 
 # 卸载命令
 uninstall:
   - |
     set +e
-    
+
     log_info "Uninstalling AgentBox Dashboard..."
-    
+
     # 停止服务进程
     pkill -f "board-server" 2>/dev/null || true
     pkill -f "start-board" 2>/dev/null || true
-    
-    # ⚠️ 保留用户配置，只清理运行时数据
-    if [ -d ~/plugins-data/board ]; then
-      # 保留 config/ 目录（用户配置）
-      rm -rf ~/plugins-data/board/runtime 2>/dev/null || true
-      rm -rf ~/plugins-data/board/cache 2>/dev/null || true
-      log_info "User configuration preserved in ~/plugins-data/board/config"
-    fi
 
     rm -rf ~/supervisor/board.conf 2>/dev/null || true
     rm -rf ~/supervisor/board.sh 2>/dev/null || true
-    
+
     # 清理日志
     rm -f ~/logs/board.log 2>/dev/null || true
-    
+
     log_success "Dashboard uninstalled"
 
 # 更新命令
@@ -103,12 +85,6 @@ update:
     set +e
 
     log_info "Updating AgentBox Dashboard..."
-
-    # 重新复制启动脚本到可写目录
-    if [ -f /home/agent/plugins-config/board/start-board.sh ]; then
-      cp /home/agent/plugins-config/board/start-board.sh ~/plugins-data/board/
-      chmod +x ~/plugins-data/board/start-board.sh
-    fi
 
     # 重启服务（如果正在运行）
     pkill -f "board-server" 2>/dev/null || true

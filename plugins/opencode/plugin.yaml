@@ -82,7 +82,7 @@ env:
 
 # 需要持久化的目录
 volumes:
-  - ~/.opencode: OpenCode 配置和缓存
+  - ~/.opencode
 
 # 健康检查
 healthcheck:

@@ -130,9 +130,9 @@ post_install:
     echo ""
 
 # 需要持久化的目录
-# 注意：~/.config 已在 docker-compose.yml 中持久化，无需重复
 volumes:
-  - ~/.code-server: VS Code 安装目录
+  - ~/.code-server
+  - ~/.config/code-server
 
 # 服务配置（Web 应用服务）
 service:

@@ -81,7 +81,7 @@ env:
 
 # 需要持久化的目录
 volumes:
-  - ~/.config/kilo: Kilocode 配置和缓存
+  - ~/.config/kilo
 
 # 健康检查
 healthcheck:

@@ -105,9 +105,9 @@ post_install:
 
 # 需要持久化的目录
 volumes:
-  - ~/.claude: Claude Code 配置和缓存
-  - ~/.claude.json: Claude Code 全局配置
-  - ~/.local: Claude Code 安装目录
+  - ~/.claude
+  - ~/.claude.json
+  - ~/.local
 
 # 健康检查
 healthcheck:

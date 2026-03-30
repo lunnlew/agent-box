@@ -15,10 +15,6 @@ plugins:
   - name: opencode
     enabled: true
 
-  # iFlow AI CLI - AI 编程助手
-  - name: iflow
-    enabled: true
-
   # OpenClaw - 个人 AI 助手，支持多渠道消息平台
   - name: openclaw
     enabled: true

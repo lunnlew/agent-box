@@ -31,7 +31,6 @@ init_environment() {
     log_info "Initializing AgentBox environment..."
 
     mkdir -p "$HOME/tools" \
-             "$HOME/plugins-data" \
              "$HOME/logs" \
              "$HOME/.npm" \
              "$HOME/.pip"
@@ -143,6 +142,38 @@ fix_docker_socket() {
 }
 
 # ===========================================
+# 检查数据目录权限
+# ===========================================
+check_data_permissions() {
+    # 检查关键目录是否可写
+    local test_file="$HOME/.permission_test"
+
+    if ! touch "$test_file" 2>/dev/null; then
+        log_error "Permission denied: cannot write to $HOME"
+        log_error ""
+        log_error "Please fix permissions on the host:"
+        log_error "  chmod -R 755 ./data"
+        log_error "  chown -R 1000:1000 ./data"
+        log_error ""
+        log_error "Or remove ./data directory to let container create it:"
+        log_error "  rm -rf ./data && mkdir -p ./data"
+        return 1
+    fi
+
+    rm -f "$test_file" 2>/dev/null || true
+
+    # 检查 .npm 目录
+    if [ -d "$HOME/.npm" ]; then
+        if [ ! -w "$HOME/.npm" ]; then
+            log_warning ".npm directory permission issue detected"
+            log_warning "Run on host: chown -R 1000:1000 ./data/.npm"
+        fi
+    fi
+
+    return 0
+}
+
+# ===========================================
 # 安装插件（容错模式）
 # ===========================================
 install_plugins() {
@@ -216,6 +247,9 @@ main_root() {
 
 # Agent 阶段
 main_agent() {
+    # 检查数据目录权限
+    check_data_permissions || log_warning "Permission check failed, some operations may fail"
+
     # 修复 Docker 配置目录权限（重要！）
     # 防止 root 阶段创建的文件导致 agent 用户权限问题
     mkdir -p ~/.docker

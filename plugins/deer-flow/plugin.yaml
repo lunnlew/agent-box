@@ -69,9 +69,9 @@ env:
 
 # 需要持久化的目录
 volumes:
-  - ~/deer-flow: DeerFlow 源代码和配置
-  - ~/deer-flow/.env: 环境配置
-  - ~/deer-flow/config.yaml: 主配置文件
+  - ~/deer-flow
+  - ~/deer-flow/.env
+  - ~/deer-flow/config.yaml
 
 # 健康检查 - 检查服务是否响应
 healthcheck:

@@ -24,10 +24,10 @@ fi
 # ===========================================
 PLUGINS_CONFIG="$HOME/config/plugins.yaml"
 PLUGINS_DEF_DIR="$HOME/plugins-config"          # 插件定义目录（只读）
-PLUGINS_DATA_DIR="$HOME/plugins-data"           # 插件数据目录（可读写）
 TOOLS_DIR="$HOME/tools"
 CACHE_DIR="$HOME/cache"
 SUPERVISOR_CONF="$HOME/supervisor/supervisord.conf"
+VOLUME_MAP_FILE="$HOME/.volume-map"             # 卷映射缓存文件
 
 # ===========================================
 # 帮助信息
@@ -108,8 +108,15 @@ get_install_commands() {
 # ===========================================
 # 插件卷管理
 # ===========================================
+# 数据管理策略：
+# - volumes 格式：源路径 或 源路径:目标路径
+# - 只有源路径 → 直接创建目录
+# - 有目标路径 → 创建符号链接 源 → 目标
+# - 多插件声明相同源路径 → 自动检测并警告
+# ===========================================
 
 # 解析 volumes 定义
+# 返回格式：源路径|目标路径（目标为空表示直接使用）
 parse_volumes() {
     local plugin_file="$1"
 
@@ -118,85 +125,92 @@ parse_volumes() {
     fi
 
     awk '/^volumes:/ {in_volumes=1; next} /^[a-zA-Z_]+:/ {in_volumes=0} in_volumes && /^\s+-/ {print}' "$plugin_file" | sed 's/^\s*- //' | while read -r line; do
-        echo "$line" | cut -d':' -f1 | xargs
+        # 去除描述部分（如果有）
+        line=$(echo "$line" | cut -d':' -f1-2 | xargs)
+
+        if echo "$line" | grep -q ':'; then
+            # 格式：源:目标
+            local src=$(echo "$line" | cut -d':' -f1 | xargs)
+            local dst=$(echo "$line" | cut -d':' -f2 | xargs)
+            echo "${src}|${dst}"
+        else
+            # 格式：只有源
+            echo "${line}|"
+        fi
     done
 }
 
-# 确保插件 volumes 符号链接存在 (容器重启后调用)
-ensure_plugin_volumes() {
-    local plugin_name="$1"
-    local plugin_file="$2"
+# 获取已启用的插件列表
+get_enabled_plugins() {
+    if [ ! -f "$PLUGINS_CONFIG" ]; then
+        return 0
+    fi
+    grep -B1 'enabled: true' "$PLUGINS_CONFIG" | grep 'name:' | sed 's/.*name:[[:space:]]*//' | tr -d ' '
+}
 
-    local volumes=$(parse_volumes "$plugin_file")
+# 生成卷映射表（检测共享关系）
+generate_volume_map() {
+    declare -A volume_counter
+    declare -A volume_plugins
 
-    if [ -z "$volumes" ]; then
+    log_info "Scanning plugin volumes..."
+
+    for plugin in $(get_enabled_plugins); do
+        local file="$PLUGINS_DEF_DIR/$plugin/plugin.yaml"
+        [ -f "$file" ] || continue
+        local volumes=$(parse_volumes "$file")
+        while IFS='|' read -r src dst; do
+            [ -z "$src" ] && continue
+            local src_path="${src/#\~/$HOME}"
+            volume_counter["$src_path"]=$((${volume_counter["$src_path"]:-0} + 1))
+            volume_plugins["$src_path"]="${volume_plugins["$src_path"]} $plugin"
+        done <<< "$volumes"
+    done
+
+    # 写入映射文件
+    : > "$VOLUME_MAP_FILE"
+    echo "# AgentBox Volume Map (auto-generated)" >> "$VOLUME_MAP_FILE"
+    echo "# Format: src_path|count|plugins" >> "$VOLUME_MAP_FILE"
+    echo "# Generated: $(date -Iseconds)" >> "$VOLUME_MAP_FILE"
+    echo "" >> "$VOLUME_MAP_FILE"
+
+    for src_path in $(echo "${!volume_counter[@]}" | tr ' ' '\n' | sort); do
+        local count="${volume_counter[$src_path]}"
+        local plugins="${volume_plugins[$src_path]}"
+
+        if [ "$count" -gt 1 ]; then
+            log_warning "  CONFLICT: $src_path declared by $count plugins:$plugins"
+        else
+            log_info "  VOLUME: $src_path ($plugins)"
+        fi
+
+        echo "$src_path|$count|$plugins" >> "$VOLUME_MAP_FILE"
+    done
+
+    log_success "Volume map generated"
+}
+
+# 确保路径存在（智能判断文件或目录）
+ensure_path_exists() {
+    local path="$1"
+
+    if [ -e "$path" ]; then
         return 0
     fi
 
-    log_info "Ensuring volume links for $plugin_name..."
-
-    local plugin_data_root="$PLUGINS_DATA_DIR/$plugin_name"
-
-    while IFS= read -r volume; do
-        if [ -z "$volume" ]; then
-            continue
-        fi
-
-        local vol_path="${volume/#\~/$HOME}"
-        local vol_name=$(basename "$vol_path")
-        local isolated_path="$plugin_data_root/$vol_name"
-
-        # 情况 1: 符号链接已存在且正确
-        if [ -L "$vol_path" ]; then
-            local link_target=$(readlink -f "$vol_path" 2>/dev/null || readlink "$vol_path")
-            if [ "$link_target" = "$isolated_path" ]; then
-                log_info "  Link OK: $vol_path -> $isolated_path"
-                continue
-            else
-                log_warning "  Link points to wrong target: $vol_path -> $link_target"
-                rm -f "$vol_path"
-            fi
-        fi
-
-        # 情况 2: 隔离数据存在，需要重建链接
-        if [ -e "$isolated_path" ]; then
-            local is_file=false
-            [ -f "$isolated_path" ] && is_file=true
-
-            if [ -e "$vol_path" ] && [ ! -L "$vol_path" ]; then
-                log_info "  Path exists but not a symlink: $vol_path"
-                if [ "$is_file" = true ]; then
-                    if [ "$vol_path" -nt "$isolated_path" ]; then
-                        cp -a "$vol_path" "$isolated_path"
-                    fi
-                else
-                    cp -a "$vol_path"/. "$isolated_path/" 2>/dev/null || true
-                fi
-                rm -rf "$vol_path"
-            fi
-
-            ln -sf "$isolated_path" "$vol_path"
-            log_info "  Restored link: $vol_path -> $isolated_path"
-        else
-            log_warning "  Isolated data not found: $isolated_path"
-            log_warning "  Plugin $plugin_name may need reinstallation"
-        fi
-    done <<< "$volumes"
+    # 根据扩展名判断是文件还是目录
+    local file_patterns="\.json$ \.yaml$ \.yml$ \.toml$ \.conf$ \.env$ \.rc$ \.cfg$ \.log$ \.txt$"
+    if echo "$path" | grep -qE "$file_patterns"; then
+        mkdir -p "$(dirname "$path")"
+        touch "$path"
+        log_info "  Created file: $path"
+    else
+        mkdir -p "$path"
+        log_info "  Created dir: $path"
+    fi
 }
 
-# 标记插件已安装
-mark_plugin_installed() {
-    local plugin_name="$1"
-    local plugin_data_dir="$PLUGINS_DATA_DIR/$plugin_name"
-    local install_marker="$plugin_data_dir/.installed"
-
-    mkdir -p "$plugin_data_dir"
-
-    echo "installed_at=$(date -Iseconds)" > "$install_marker"
-    echo "plugin_name=$plugin_name" >> "$install_marker"
-}
-
-# 设置插件数据目录隔离 (安装完成后调用)
+# 设置插件卷（安装时调用）
 setup_plugin_volumes() {
     local plugin_name="$1"
     local plugin_file="$2"
@@ -207,63 +221,96 @@ setup_plugin_volumes() {
         return 0
     fi
 
-    log_info "Setting up isolated volumes for $plugin_name..."
+    log_info "Setting up volumes for $plugin_name..."
 
-    local plugin_data_root="$PLUGINS_DATA_DIR/$plugin_name"
-    mkdir -p "$plugin_data_root"
+    while IFS='|' read -r src dst; do
+        [ -z "$src" ] && continue
 
-    while IFS= read -r volume; do
-        if [ -z "$volume" ]; then
-            continue
-        fi
+        local src_path="${src/#\~/$HOME}"
 
-        local vol_path="${volume/#\~/$HOME}"
-        local vol_name=$(basename "$vol_path")
-        local isolated_path="$plugin_data_root/$vol_name"
+        if [ -n "$dst" ]; then
+            # 有目标路径 → 创建符号链接
+            local dst_path="${dst/#\~/$HOME}"
 
-        # 智能判断文件还是目录
-        local is_file=false
-        if [ -e "$vol_path" ]; then
-            [ -f "$vol_path" ] && is_file=true
-        elif [ -e "$isolated_path" ]; then
-            [ -f "$isolated_path" ] && is_file=true
-        else
-            local dir_names="local config cache data lib bin share .claude .config .cache .opencode .qwen-code .code-server"
-            if echo " $dir_names " | grep -q " $vol_name "; then
-                is_file=false
-            elif [[ "$vol_name" == .* ]]; then
-                is_file=false
-            elif [[ "$vol_name" == *.* ]]; then
-                is_file=true
-            fi
-        fi
+            # 确保目标存在
+            ensure_path_exists "$dst_path"
 
-        if [ "$is_file" = true ]; then
-            if [ -f "$vol_path" ] && [ ! -L "$vol_path" ]; then
-                mv "$vol_path" "$isolated_path" 2>/dev/null || true
-            fi
-            [ ! -f "$isolated_path" ] && touch "$isolated_path"
-            if [ ! -L "$vol_path" ]; then
-                rm -f "$vol_path" 2>/dev/null || true
-                ln -sf "$isolated_path" "$vol_path"
-                log_info "  Linked file: $vol_path -> $isolated_path"
-            fi
-        else
-            mkdir -p "$isolated_path"
-            if [ -e "$vol_path" ] && [ ! -L "$vol_path" ]; then
-                if [ -d "$vol_path" ]; then
-                    cp -a "$vol_path"/. "$isolated_path/" 2>/dev/null || true
-                else
-                    cp -a "$vol_path" "$isolated_path" 2>/dev/null || true
+            # 处理源路径已存在的情况
+            if [ -e "$src_path" ] && [ ! -L "$src_path" ]; then
+                log_info "  Migrating: $src_path -> $dst_path"
+                # 如果源有数据，迁移到目标
+                if [ -d "$src_path" ]; then
+                    cp -a "$src_path"/. "$dst_path"/ 2>/dev/null || true
+                elif [ -f "$src_path" ]; then
+                    cp -a "$src_path" "$dst_path" 2>/dev/null || true
                 fi
-                rm -rf "$vol_path"
+                rm -rf "$src_path"
             fi
-            if [ ! -L "$vol_path" ]; then
-                ln -sf "$isolated_path" "$vol_path"
-                log_info "  Linked dir: $vol_path -> $isolated_path"
-            fi
+
+            # 创建符号链接
+            ln -sf "$dst_path" "$src_path"
+            log_info "  Linked: $src_path -> $dst_path"
+        else
+            # 无目标路径 → 直接创建目录
+            ensure_path_exists "$src_path"
         fi
     done <<< "$volumes"
+}
+
+# 确保插件卷存在 (容器重启后调用)
+ensure_plugin_volumes() {
+    local plugin_name="$1"
+    local plugin_file="$2"
+
+    local volumes=$(parse_volumes "$plugin_file")
+
+    if [ -z "$volumes" ]; then
+        return 0
+    fi
+
+    log_info "Ensuring volumes for $plugin_name..."
+
+    while IFS='|' read -r src dst; do
+        [ -z "$src" ] && continue
+
+        local src_path="${src/#\~/$HOME}"
+
+        if [ -n "$dst" ]; then
+            # 有目标路径 → 确保符号链接正确
+            local dst_path="${dst/#\~/$HOME}"
+
+            # 确保目标存在
+            ensure_path_exists "$dst_path"
+
+            # 检查符号链接
+            if [ -L "$src_path" ]; then
+                local current=$(readlink -f "$src_path" 2>/dev/null || readlink "$src_path")
+                if [ "$current" != "$dst_path" ]; then
+                    log_warning "  Link mismatch: $src_path -> $current (expected: $dst_path)"
+                    rm -f "$src_path"
+                    ln -sf "$dst_path" "$src_path"
+                fi
+            elif [ ! -e "$src_path" ]; then
+                ln -sf "$dst_path" "$src_path"
+                log_info "  Restored: $src_path -> $dst_path"
+            fi
+        else
+            # 无目标路径 → 确保目录存在
+            ensure_path_exists "$src_path"
+        fi
+    done <<< "$volumes"
+}
+
+# 标记插件已安装
+mark_plugin_installed() {
+    local plugin_name="$1"
+    local markers_dir="$HOME/.plugin-markers"
+    local install_marker="$markers_dir/$plugin_name.installed"
+
+    mkdir -p "$markers_dir"
+
+    echo "installed_at=$(date -Iseconds)" > "$install_marker"
+    echo "plugin_name=$plugin_name" >> "$install_marker"
 }
 
 # ===========================================
@@ -336,23 +383,29 @@ SCRIPT_HEADER
         log_info "You can increase timeout with: export INSTALL_TIMEOUT=600"
         return 1
     elif [ $exit_code -ne 0 ]; then
-        if echo "$output" | grep -q "ENOTEMPTY"; then
-            log_warning "Detected npm ENOTEMPTY error, attempting cleanup and retry..."
+        # 检查是否是 npm 缓存问题
+        if echo "$output" | grep -qE "ENOTEMPTY|EEXIST|EACCES.*\.npm"; then
+            log_warning "Detected npm cache issue, attempting cleanup and retry..."
 
+            # 清理 npm 缓存
+            log_info "Cleaning npm cache..."
+            rm -rf "$HOME/.npm/_cacache" 2>/dev/null || true
+            npm cache clean --force 2>/dev/null || true
+
+            # 如果是特定包安装，重试
             if [[ "$cmd" =~ npm\ install\ -g\ ([^[:space:]]+) ]]; then
                 local pkg_name="${BASH_REMATCH[1]}"
-                log_info "Cleaning up existing npm package: $pkg_name"
-                npm uninstall -g "$pkg_name" 2>/dev/null || true
-                rm -rf "$HOME/tools/lib/node_modules/$pkg_name" 2>/dev/null || true
-
-                log_info "Retrying: $cmd"
+                log_info "Retrying npm install: $pkg_name"
                 timeout "$timeout_seconds" bash -c "$cmd" 2>&1 || {
-                    log_error "Install command failed after retry: $(timeout "$timeout_seconds" bash -c "$cmd" 2>&1 | head -5)"
+                    log_error "Install command failed after cache cleanup: $(timeout "$timeout_seconds" bash -c "$cmd" 2>&1 | tail -5)"
                     return 1
                 }
             else
-                log_error "Install command failed: $output"
-                return 1
+                log_info "Retrying installation..."
+                timeout "$timeout_seconds" bash -c "$cmd" 2>&1 || {
+                    log_error "Install command failed after cache cleanup: $(timeout "$timeout_seconds" bash -c "$cmd" 2>&1 | tail -5)"
+                    return 1
+                }
             fi
         else
             log_error "Install command failed: $output"
@@ -368,7 +421,7 @@ is_plugin_installed() {
     local plugin_name="$1"
     local plugin_file="$2"
 
-    local install_marker="$PLUGINS_DATA_DIR/$plugin_name/.installed"
+    local install_marker="$HOME/.plugin-markers/$plugin_name.installed"
     if [ -f "$install_marker" ]; then
         log_info "Plugin $plugin_name marked as installed, verifying..."
 
@@ -762,22 +815,23 @@ install_all_plugins() {
     return 0  # 总是返回成功，避免容器重启
 }
 
-# 恢复所有已安装插件的符号链接
+# 恢复所有已安装插件的卷
 restore_all_plugin_volumes() {
-    log_info "Restoring plugin volume links..."
+    log_info "Restoring plugin volumes..."
 
-    if [ ! -d "$PLUGINS_DATA_DIR" ]; then
+    local markers_dir="$HOME/.plugin-markers"
+
+    if [ ! -d "$markers_dir" ]; then
         return 0
     fi
 
-    for plugin_data_dir in "$PLUGINS_DATA_DIR"/*/; do
-        if [ -d "$plugin_data_dir" ]; then
-            local plugin_name=$(basename "$plugin_data_dir")
-            local install_marker="$plugin_data_dir/.installed"
+    for marker_file in "$markers_dir"/*.installed; do
+        if [ -f "$marker_file" ]; then
+            local plugin_name=$(basename "$marker_file" .installed)
             local plugin_file="$PLUGINS_DEF_DIR/$plugin_name/plugin.yaml"
 
-            if [ -f "$install_marker" ] && [ -f "$plugin_file" ]; then
-                log_info "Restoring links for $plugin_name..."
+            if [ -f "$plugin_file" ]; then
+                log_info "Restoring volumes for $plugin_name..."
                 ensure_plugin_volumes "$plugin_name" "$plugin_file"
                 process_plugin_env "$plugin_file" "setup"
             fi

@@ -40,34 +40,75 @@ install:
     chmod +x /tmp/hiclaw-install.sh
 
     # 获取 agentbox 容器的 /home/agent 挂载源路径（主机路径）
-    AGENT_HOME_SOURCE=$(docker inspect agentbox --format '{{json .Mounts}}' | tr ',' '\n' | grep -B1 '"Destination":"/home/agent"$' | grep '"Source"' | sed 's/.*"Source":"\([^"]*\)".*/\1/' | head -1)
+    # Windows Docker Desktop 可能返回多种格式：
+    # - /host_mnt/d/path (新格式)
+    # - /run/desktop/mnt/host/d/path (Docker Desktop 格式)
+    # - D:/path 或 D:\path (Windows 格式)
+    AGENT_HOME_SOURCE=$(docker inspect agentbox --format '{{range .Mounts}}{{if eq .Destination "/home/agent"}}{{.Source}}{{end}}{{end}}')
 
     if [ -z "$AGENT_HOME_SOURCE" ]; then
       echo "警告：无法获取 agent home 挂载源，使用默认路径"
       AGENT_HOME_SOURCE="$HOME"
     fi
 
-    # 将 Windows 路径转换为 Docker 格式（反斜杠转正斜杠，压缩双斜杠）
-    AGENT_HOME_SOURCE=$(python3 -c "import sys,re; s=sys.argv[1]; print(re.sub(r'/+', '/', s.replace(chr(92), '/')))" "$AGENT_HOME_SOURCE")
+    echo "检测到的源路径: $AGENT_HOME_SOURCE"
+
+    # 将路径转换为 Docker 兼容格式
+    # Docker Desktop Linux VM 格式 (/host_mnt/d/path 或 /run/desktop/mnt/host/d/path) - 已经是 Linux 格式，直接使用
+    # Windows 格式 (D:/path 或 D:\path) - 需要转换为 /d/path 格式
+    if [[ "$AGENT_HOME_SOURCE" =~ ^/host_mnt/ || "$AGENT_HOME_SOURCE" =~ ^/run/desktop/mnt/host/ ]]; then
+      # Docker Desktop Linux VM 格式，直接使用
+      echo "使用 Docker Desktop Linux VM 格式路径"
+    elif [[ "$AGENT_HOME_SOURCE" =~ ^[A-Za-z]: ]]; then
+      # Windows 格式 (D:/path 或 D:\path)，转换为 /d/path 格式
+      # 使用 tr 处理反斜杠，避免 sed 转义问题
+      AGENT_HOME_SOURCE=$(echo "$AGENT_HOME_SOURCE" | tr "\\" "/" | sed "s|^\([A-Za-z]\):|/\L\1|")
+      echo "转换 Windows 路径为 Linux 格式: $AGENT_HOME_SOURCE"
+    else
+      # 其他格式（可能是 Linux 原生路径），清理多余斜杠
+      AGENT_HOME_SOURCE=$(echo "$AGENT_HOME_SOURCE" | tr -s "/")
+    fi
 
     # 如果 .env 中已配置 HICLAW_WORKSPACE_DIR 则使用配置的值，否则自动构建
     if [ -n "$HICLAW_WORKSPACE_DIR" ]; then
-      echo "使用配置的 HICLAW_WORKSPACE_DIR: $HICLAW_WORKSPACE_DIR"
+      echo "配置的 HICLAW_WORKSPACE_DIR (原始): $HICLAW_WORKSPACE_DIR"
+      # 需要将用户配置的路径转换为 Docker Desktop 兼容格式
+      if [[ "$HICLAW_WORKSPACE_DIR" =~ ^[A-Za-z]: ]]; then
+        # Windows 格式 (D:/path 或 D:\path)，转换为 /d/path 格式
+        # 使用 tr 处理反斜杠，避免 sed 转义问题
+        HICLAW_WORKSPACE_DIR=$(echo "$HICLAW_WORKSPACE_DIR" | tr "\\" "/" | sed "s|^\([A-Za-z]\):|/\L\1|")
+        echo "转换后的 HICLAW_WORKSPACE_DIR: $HICLAW_WORKSPACE_DIR"
+      elif [[ "$HICLAW_WORKSPACE_DIR" =~ ^~ ]]; then
+        # ~ 开头的路径，展开为容器内路径，需要转换为对应的主机路径
+        echo "警告: ~/ 路径格式在 Docker 挂载中无效，使用自动检测的主机路径"
+        HICLAW_WORKSPACE_DIR="${AGENT_HOME_SOURCE}/hiclaw-manager"
+        echo "自动设置 HICLAW_WORKSPACE_DIR: $HICLAW_WORKSPACE_DIR"
+      fi
+      export HICLAW_WORKSPACE_DIR
     else
       export HICLAW_WORKSPACE_DIR="${AGENT_HOME_SOURCE}/hiclaw-manager"
       echo "自动设置 HICLAW_WORKSPACE_DIR: $HICLAW_WORKSPACE_DIR"
     fi
 
     # 获取 agentbox 容器的 /host-share 挂载源路径（主机路径）
-    HOST_SHARE_SOURCE=$(docker inspect agentbox --format '{{json .Mounts}}' | grep -o "Source.:.[^,]*host-share[^,]*" | sed "s/Source.:\"\(.*\)\"/\1/")
+    HOST_SHARE_SOURCE=$(docker inspect agentbox --format '{{range .Mounts}}{{if eq .Destination "/host-share"}}{{.Source}}{{end}}{{end}}')
 
     if [ -z "$HOST_SHARE_SOURCE" ]; then
       echo "警告：无法获取 host-share 挂载源，使用默认路径"
       HOST_SHARE_SOURCE="$HOME"
     fi
 
-    # 将 Windows 路径转换为 Docker 格式（反斜杠转正斜杠，压缩双斜杠）
-    HOST_SHARE_SOURCE=$(python3 -c "import sys,re; s=sys.argv[1]; print(re.sub(r'/+', '/', s.replace(chr(92), '/')))" "$HOST_SHARE_SOURCE")
+    echo "检测到的 host-share 源路径: $HOST_SHARE_SOURCE"
+
+    # 同样的路径转换逻辑
+    if [[ "$HOST_SHARE_SOURCE" =~ ^/host_mnt/ || "$HOST_SHARE_SOURCE" =~ ^/run/desktop/mnt/host/ ]]; then
+      echo "使用 Docker Desktop Linux VM 格式路径"
+    elif [[ "$HOST_SHARE_SOURCE" =~ ^[A-Za-z]: ]]; then
+      HOST_SHARE_SOURCE=$(echo "$HOST_SHARE_SOURCE" | tr "\\" "/" | sed "s|^\([A-Za-z]\):|/\L\1|")
+      echo "转换 Windows 路径为 Linux 格式: $HOST_SHARE_SOURCE"
+    else
+      HOST_SHARE_SOURCE=$(echo "$HOST_SHARE_SOURCE" | tr -s "/")
+    fi
 
     echo "Host share source: $HOST_SHARE_SOURCE"
 
@@ -89,12 +130,12 @@ env:
   # 否则会自动从 agentbox 容器的 /home/agent 挂载源路径构建
   HICLAW_WORKSPACE_DIR: export HICLAW_WORKSPACE_DIR=${HICLAW_WORKSPACE_DIR:-}
 
-# 需要持久化的目录（由官方脚本管理）
+# 需要持久化的目录
+# 注意：hiclaw-data 是 Docker volume，不由 AgentBox 管理
 volumes:
-  - hiclaw-data: Docker 数据卷（由官方脚本创建）
-  - ~/hiclaw-manager: Manager 工作空间
-  - ~/hiclaw-manager.env: 环境配置文件
-  - /host-share: 共享目录 (与 agentbox 容器共享)
+  - ~/hiclaw-manager
+  - ~/hiclaw-manager.env
+  - /host-share
 
 # 健康检查 - 检查 Docker 容器是否运行（使用 grep -q . 确保有输出才返回 0）
 healthcheck:
@@ -147,15 +188,28 @@ service:
       export HICLAW_LLM_API_KEY=${HICLAW_LLM_API_KEY:-${DASHSCOPE_API_KEY:-sk-dummy-key-for-test}}
 
       # 获取 agentbox 容器的 /home/agent 挂载源路径（主机路径）
-      AGENT_HOME_SOURCE=$(docker inspect agentbox --format '{{json .Mounts}}' | tr ',' '\n' | grep -B1 '"Destination":"/home/agent"$' | grep '"Source"' | sed 's/.*"Source":"\([^"]*\)".*/\1/' | head -1)
+      # Windows Docker Desktop 可能返回多种格式：
+      # - /host_mnt/d/path (新格式)
+      # - /run/desktop/mnt/host/d/path (Docker Desktop 格式)
+      # - D:/path 或 D:\path (Windows 格式)
+      AGENT_HOME_SOURCE=$(docker inspect agentbox --format '{{range .Mounts}}{{if eq .Destination "/home/agent"}}{{.Source}}{{end}}{{end}}')
 
       if [ -z "$AGENT_HOME_SOURCE" ]; then
         echo "警告：无法获取 agent home 挂载源，使用默认路径"
         AGENT_HOME_SOURCE="$HOME"
       fi
 
-      # 将 Windows 路径转换为 Docker 格式（反斜杠转正斜杠，压缩双斜杠）
-      AGENT_HOME_SOURCE=$(python -c "import sys,re; s=sys.argv[1]; print(re.sub(r'/+', '/', s.replace(chr(92), '/')))" "$AGENT_HOME_SOURCE")
+      echo "检测到的源路径: $AGENT_HOME_SOURCE"
+
+      # 将路径转换为 Docker 兼容格式
+      if [[ "$AGENT_HOME_SOURCE" =~ ^/host_mnt/ || "$AGENT_HOME_SOURCE" =~ ^/run/desktop/mnt/host/ ]]; then
+        echo "使用 Docker Desktop Linux VM 格式路径"
+      elif [[ "$AGENT_HOME_SOURCE" =~ ^[A-Za-z]: ]]; then
+        AGENT_HOME_SOURCE=$(echo "$AGENT_HOME_SOURCE" | tr "\\" "/" | sed "s|^\([A-Za-z]\):|/\L\1|")
+        echo "转换 Windows 路径为 Linux 格式: $AGENT_HOME_SOURCE"
+      else
+        AGENT_HOME_SOURCE=$(echo "$AGENT_HOME_SOURCE" | tr -s "/")
+      fi
 
       # 如果 .env 中已配置 HICLAW_WORKSPACE_DIR 则使用配置的值，否则自动构建
       if [ -n "$HICLAW_WORKSPACE_DIR" ]; then
@@ -166,15 +220,24 @@ service:
       fi
 
       # 获取 agentbox 容器的 /host-share 挂载源路径（主机路径）
-      HOST_SHARE_SOURCE=$(docker inspect agentbox --format '{{json .Mounts}}' | grep -o "Source.:.[^,]*host-share[^,]*" | sed "s/Source.:\"\(.*\)\"/\1/")
+      HOST_SHARE_SOURCE=$(docker inspect agentbox --format '{{range .Mounts}}{{if eq .Destination "/host-share"}}{{.Source}}{{end}}{{end}}')
 
       if [ -z "$HOST_SHARE_SOURCE" ]; then
         echo "警告：无法获取 host-share 挂载源，使用默认路径"
         HOST_SHARE_SOURCE="$HOME"
       fi
 
-      # 将 Windows 路径转换为 Docker 格式（反斜杠转正斜杠，压缩双斜杠）
-      HOST_SHARE_SOURCE=$(python -c "import sys,re; s=sys.argv[1]; print(re.sub(r'/+', '/', s.replace(chr(92), '/')))" "$HOST_SHARE_SOURCE")
+      echo "检测到的 host-share 源路径: $HOST_SHARE_SOURCE"
+
+      # 同样的路径转换逻辑
+      if [[ "$HOST_SHARE_SOURCE" =~ ^/host_mnt/ || "$HOST_SHARE_SOURCE" =~ ^/run/desktop/mnt/host/ ]]; then
+        echo "使用 Docker Desktop Linux VM 格式路径"
+      elif [[ "$HOST_SHARE_SOURCE" =~ ^[A-Za-z]: ]]; then
+        HOST_SHARE_SOURCE=$(echo "$HOST_SHARE_SOURCE" | tr "\\" "/" | sed "s|^\([A-Za-z]\):|/\L\1|")
+        echo "转换 Windows 路径为 Linux 格式: $HOST_SHARE_SOURCE"
+      else
+        HOST_SHARE_SOURCE=$(echo "$HOST_SHARE_SOURCE" | tr -s "/")
+      fi
 
       echo "Host share source: $HOST_SHARE_SOURCE"
 
@@ -251,34 +314,69 @@ update:
     export HICLAW_LLM_API_KEY=${HICLAW_LLM_API_KEY:-${DASHSCOPE_API_KEY:-sk-dummy-key-for-test}}
 
     # 获取 agentbox 容器的 /home/agent 挂载源路径（主机路径）
-    AGENT_HOME_SOURCE=$(docker inspect agentbox --format '{{json .Mounts}}' | tr ',' '\n' | grep -B1 '"Destination":"/home/agent"$' | grep '"Source"' | sed 's/.*"Source":"\([^"]*\)".*/\1/' | head -1)
+    # Windows Docker Desktop 可能返回多种格式：
+    # - /host_mnt/d/path (新格式)
+    # - /run/desktop/mnt/host/d/path (Docker Desktop 格式)
+    # - D:/path 或 D:\path (Windows 格式)
+    AGENT_HOME_SOURCE=$(docker inspect agentbox --format '{{range .Mounts}}{{if eq .Destination "/home/agent"}}{{.Source}}{{end}}{{end}}')
 
     if [ -z "$AGENT_HOME_SOURCE" ]; then
       echo "警告：无法获取 agent home 挂载源，使用默认路径"
       AGENT_HOME_SOURCE="$HOME"
     fi
 
-    # 将 Windows 路径转换为 Docker 格式（反斜杠转正斜杠，压缩双斜杠）
-    AGENT_HOME_SOURCE=$(python3 -c "import sys,re; s=sys.argv[1]; print(re.sub(r'/+', '/', s.replace(chr(92), '/')))" "$AGENT_HOME_SOURCE")
+    echo "检测到的源路径: $AGENT_HOME_SOURCE"
+
+    # 将路径转换为 Docker 兼容格式
+    if [[ "$AGENT_HOME_SOURCE" =~ ^/host_mnt/ || "$AGENT_HOME_SOURCE" =~ ^/run/desktop/mnt/host/ ]]; then
+      echo "使用 Docker Desktop Linux VM 格式路径"
+    elif [[ "$AGENT_HOME_SOURCE" =~ ^[A-Za-z]: ]]; then
+      AGENT_HOME_SOURCE=$(echo "$AGENT_HOME_SOURCE" | sed 's|^\([A-Za-z]\):|\L\1|' | sed 's|:||g' | sed 's|\\|/|g' | sed 's|^|/|')
+      echo "转换 Windows 路径为 Linux 格式: $AGENT_HOME_SOURCE"
+    else
+      AGENT_HOME_SOURCE=$(python3 -c "import sys,re; s=sys.argv[1]; print(re.sub(r'/+', '/', s.replace(chr(92), '/')))" "$AGENT_HOME_SOURCE")
+    fi
 
     # 如果 .env 中已配置 HICLAW_WORKSPACE_DIR 则使用配置的值，否则自动构建
     if [ -n "$HICLAW_WORKSPACE_DIR" ]; then
-      echo "使用配置的 HICLAW_WORKSPACE_DIR: $HICLAW_WORKSPACE_DIR"
+      echo "配置的 HICLAW_WORKSPACE_DIR (原始): $HICLAW_WORKSPACE_DIR"
+      # 需要将用户配置的路径转换为 Docker Desktop 兼容格式
+      if [[ "$HICLAW_WORKSPACE_DIR" =~ ^[A-Za-z]: ]]; then
+        # Windows 格式 (D:/path 或 D:\path)，转换为 /d/path 格式
+        # 使用 tr 处理反斜杠，避免 sed 转义问题
+        HICLAW_WORKSPACE_DIR=$(echo "$HICLAW_WORKSPACE_DIR" | tr "\\" "/" | sed "s|^\([A-Za-z]\):|/\L\1|")
+        echo "转换后的 HICLAW_WORKSPACE_DIR: $HICLAW_WORKSPACE_DIR"
+      elif [[ "$HICLAW_WORKSPACE_DIR" =~ ^~ ]]; then
+        # ~ 开头的路径，展开为容器内路径，需要转换为对应的主机路径
+        echo "警告: ~/ 路径格式在 Docker 挂载中无效，使用自动检测的主机路径"
+        HICLAW_WORKSPACE_DIR="${AGENT_HOME_SOURCE}/hiclaw-manager"
+        echo "自动设置 HICLAW_WORKSPACE_DIR: $HICLAW_WORKSPACE_DIR"
+      fi
+      export HICLAW_WORKSPACE_DIR
     else
       export HICLAW_WORKSPACE_DIR="${AGENT_HOME_SOURCE}/hiclaw-manager"
       echo "自动设置 HICLAW_WORKSPACE_DIR: $HICLAW_WORKSPACE_DIR"
     fi
 
     # 获取 agentbox 容器的 /host-share 挂载源路径（主机路径）
-    HOST_SHARE_SOURCE=$(docker inspect agentbox --format '{{json .Mounts}}' | grep -o "Source.:.[^,]*host-share[^,]*" | sed "s/Source.:\"\(.*\)\"/\1/")
+    HOST_SHARE_SOURCE=$(docker inspect agentbox --format '{{range .Mounts}}{{if eq .Destination "/host-share"}}{{.Source}}{{end}}{{end}}')
 
     if [ -z "$HOST_SHARE_SOURCE" ]; then
       echo "警告：无法获取 host-share 挂载源，使用默认路径"
       HOST_SHARE_SOURCE="$HOME"
     fi
 
-    # 将 Windows 路径转换为 Docker 格式（反斜杠转正斜杠，压缩双斜杠）
-    HOST_SHARE_SOURCE=$(python3 -c "import sys,re; s=sys.argv[1]; print(re.sub(r'/+', '/', s.replace(chr(92), '/')))" "$HOST_SHARE_SOURCE")
+    echo "检测到的 host-share 源路径: $HOST_SHARE_SOURCE"
+
+    # 同样的路径转换逻辑
+    if [[ "$HOST_SHARE_SOURCE" =~ ^/host_mnt/ || "$HOST_SHARE_SOURCE" =~ ^/run/desktop/mnt/host/ ]]; then
+      echo "使用 Docker Desktop Linux VM 格式路径"
+    elif [[ "$HOST_SHARE_SOURCE" =~ ^[A-Za-z]: ]]; then
+      HOST_SHARE_SOURCE=$(echo "$HOST_SHARE_SOURCE" | tr "\\" "/" | sed "s|^\([A-Za-z]\):|/\L\1|")
+      echo "转换 Windows 路径为 Linux 格式: $HOST_SHARE_SOURCE"
+    else
+      HOST_SHARE_SOURCE=$(echo "$HOST_SHARE_SOURCE" | tr -s "/")
+    fi
 
     echo "Host share source: $HOST_SHARE_SOURCE"
 

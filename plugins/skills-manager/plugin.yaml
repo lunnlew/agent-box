@@ -42,18 +42,24 @@ install:
     fi
 
     # 复制启动脚本到可写目录
+    log_info "Copying startup script..."
     if [ -f /home/agent/plugins-config/skills-manager/start-skills-manager.sh ]; then
       cp /home/agent/plugins-config/skills-manager/start-skills-manager.sh ~/tools/appimages/Skills-Manager/
       chmod +x ~/tools/appimages/Skills-Manager/start-skills-manager.sh
+      log_info "Startup script copied successfully"
+    else
+      log_warning "Startup script source not found at /home/agent/plugins-config/skills-manager/start-skills-manager.sh"
+      log_warning "Skipping startup script copy (service may fail to start)"
     fi
 
     # 验证安装
     if [ ! -f ~/tools/appimages/Skills-Manager/squashfs-root/AppRun ]; then
-      log_error "Installation failed: AppRun not found"
-      exit 1
+      log_error "Installation failed: AppRun not found (AppImage extraction may have failed)"
+      log_info "Please check network connection and retry: agentbox install skills-manager --force"
+      # ⚠️ 不 exit，让脚本继续执行，至少保留已复制的启动脚本
+    else
+      log_success "Skills Manager installed successfully"
     fi
-
-    log_success "Skills Manager installed successfully"
 
 # 环境变量
 env:
@@ -78,8 +84,8 @@ post_install:
 
 # 需要持久化的目录
 volumes:
-  - ~/.skills-manager: Skills Manager 配置和数据
-  - ~/tools/appimages/Skills-Manager: AppImage 安装目录
+  - ~/.skills-manager
+  - ~/tools/appimages/Skills-Manager
 
 # 服务配置（GUI 应用服务）
 service:
@@ -157,15 +163,19 @@ update:
     fi
 
     # 复制启动脚本到可写目录
+    log_info "Copying startup script..."
     if [ -f /home/agent/plugins-config/skills-manager/start-skills-manager.sh ]; then
       cp /home/agent/plugins-config/skills-manager/start-skills-manager.sh ~/tools/appimages/Skills-Manager/
       chmod +x ~/tools/appimages/Skills-Manager/start-skills-manager.sh
+      log_info "Startup script copied successfully"
+    else
+      log_warning "Startup script source not found"
     fi
 
     # 验证
     if [ ! -f ~/tools/appimages/Skills-Manager/squashfs-root/AppRun ]; then
-      log_error "Update verification failed"
-      exit 1
+      log_error "Update verification failed: AppRun not found"
+      log_info "Please retry: agentbox install skills-manager --force"
+    else
+      log_success "Skills Manager updated successfully"
     fi
-
-    log_success "Skills Manager updated successfully"
