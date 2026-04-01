@@ -8,121 +8,18 @@ requires:
   - curl
   - bash
 
-# 安装命令
+# 安装命令 - 使用外部脚本文件
 install:
-  - |
-    set +e
-
-    log_info "Installing CoPaw..."
-
-    # 确保缓存目录存在且有正确权限
-    log_info "Setting up uv cache directory..."
-    mkdir -p ~/.cache/uv
-    chmod -R 755 ~/.cache/uv 2>/dev/null || true
-    chown -R "$(id -u):$(id -g)" ~/.cache/uv 2>/dev/null || true
-
-    # 完全清理并重新创建 uv 缓存目录，确保权限正确
-    log_info "Cleaning uv cache..."
-    rm -rf ~/.cache/uv/* 2>/dev/null || true
-
-    # 设置 UV 环境变量，禁用缓存
-    export UV_CACHE_DIR=~/.cache/uv
-    export UV_NO_CACHE=1
-
-    # 完全清理旧版本 - 包括所有目录但保留用户数据
-    log_info "Cleaning up old installation..."
-    rm -rf ~/.copaw/bin 2>/dev/null || true
-    rm -rf ~/.copaw/venv 2>/dev/null || true
-    rm -rf ~/.copaw/cache 2>/dev/null || true
-    rm -rf ~/.copaw/state 2>/dev/null || true
-
-    # 执行安装脚本（支持代理）
-    log_info "Downloading and running install script..."
-
-    # 先下载到临时文件，再执行
-    TEMP_SCRIPT=$(mktemp)
-
-    if [ -n "$INSTALL_PROXY" ]; then
-      curl -fsSL --connect-timeout 30 --max-time 600 --retry 3 --proxy "$INSTALL_PROXY" https://copaw.agentscope.io/install.sh -o "$TEMP_SCRIPT"
-    elif [ -n "$HTTPS_PROXY" ]; then
-      curl -fsSL --connect-timeout 30 --max-time 600 --retry 3 --proxy "$HTTPS_PROXY" https://copaw.agentscope.io/install.sh -o "$TEMP_SCRIPT"
-    else
-      curl -fsSL --connect-timeout 30 --max-time 600 --retry 3 https://copaw.agentscope.io/install.sh -o "$TEMP_SCRIPT"
-    fi
-
-    if [ ! -s "$TEMP_SCRIPT" ]; then
-      log_error "Failed to download install script"
-      rm -f "$TEMP_SCRIPT"
-      exit 1
-    fi
-
-    log_info "Install script downloaded to $TEMP_SCRIPT"
-    chmod +x "$TEMP_SCRIPT"
-
-    # 执行安装脚本（非交互式）
-    bash "$TEMP_SCRIPT"
-    install_result=$?
-
-    rm -f "$TEMP_SCRIPT"
-
-    if [ $install_result -ne 0 ]; then
-      log_error "Install script exited with code $install_result"
-      exit 1
-    fi
-
-    # 验证安装
-    log_info "Verifying installation..."
-
-    # 等待一下确保文件已创建
-    sleep 2
-
-    # 检查并创建符号链接
-    if [ -d ~/.copaw/venv/bin ] && [ -f ~/.copaw/venv/bin/copaw ]; then
-      mkdir -p ~/.local/bin
-      ln -sf ~/.copaw/venv/bin/copaw ~/.local/bin/copaw
-      log_info "Created symlink: ~/.local/bin/copaw"
-    fi
-
-    # 刷新 PATH
-    export PATH="$HOME/.local/bin:$PATH"
-
-    if ! command -v copaw &>/dev/null; then
-      log_error "Installation failed: copaw command not found"
-      log_error "Available in ~/.copaw/venv/bin:"
-      ls -la ~/.copaw/venv/bin/ 2>/dev/null || echo "(directory not found)"
-      exit 1
-    fi
-
-    copaw -h >/dev/null 2>&1 || {
-      log_error "Installation verification failed: copaw -h failed"
-      exit 1
-    }
-
-    log_success "CoPaw installed successfully"
+  - bash ~/plugins-config/copaw/scripts/install.sh
 
 # 环境变量配置
 env:
   COPAW_PORT: export COPAW_PORT=${COPAW_PORT:-8088}
   PATH_APPEND: ~/.copaw/bin
 
-# 安装后配置
+# 安装后配置 - 使用外部脚本文件
 post_install:
-  - |
-    log_info "Initializing CoPaw..."
-    copaw init --defaults --accept-security || true
-    echo ""
-    echo "============================================"
-    echo "  CoPaw 安装完成!"
-    echo "============================================"
-    echo ""
-    echo "访问地址：http://localhost:${COPAW_PORT:-8088}"
-    echo "配置目录：~/.copaw"
-    echo ""
-    echo "常用命令:"
-    echo "  copaw app     # 启动 Web 界面"
-    echo "  copaw init    # 初始化配置"
-    echo "============================================"
-    echo ""
+  - bash ~/plugins-config/copaw/scripts/post_install.sh
 
 # 需要持久化的目录
 volumes:
@@ -130,86 +27,25 @@ volumes:
 
 # 服务配置（Web 应用服务）
 service:
-  # 常驻服务，使用 Supervisor 管理
   daemon: true
-  # 服务启动后自动启动
   auto_start: true
-  # 服务崩溃后自动重启
   restart: true
-  # 最大重启次数
   max_restarts: 3
-  # 启动命令
-  command: bash -c 'copaw app --host 0.0.0.0 --port ${COPAW_PORT:-8088}'
-  # ⚠️ 注意：daemon 服务使用 supervisorctl stop/start/restart
-  # 不配置 stop_command 和 restart_command
+  command: bash ~/plugins-config/copaw/scripts/start.sh
 
 # 健康检查
 healthcheck:
   command: copaw -h
 
-# 卸载命令
+# 卸载命令 - 使用外部脚本文件
 uninstall:
-  - |
-    set +e
+  - bash ~/plugins-config/copaw/scripts/uninstall.sh
 
-    log_info "Uninstalling CoPaw..."
-
-    # 停止可能的进程
-    pkill -f "copaw" 2>/dev/null || true
-
-    # 清理安装的文件
-    rm -rf ~/.copaw/bin 2>/dev/null || true
-    rm -rf ~/.copaw/venv 2>/dev/null || true
-    rm -rf ~/.copaw/cache 2>/dev/null || true
-
-    # 清理可能的全局命令
-    rm -f ~/.local/bin/copaw 2>/dev/null || true
-
-    rm -rf ~/supervisor/copaw.conf 2>/dev/null || true
-    rm -rf ~/supervisor/copaw.sh 2>/dev/null || true
-
-    # ✅ 明确保留用户项目数据
-    # ~/.copaw/projects/ - 用户项目
-    # ~/.copaw/workflows/ - 用户工作流
-    # ~/.copaw/config/ - 用户配置
-    log_info "User projects preserved in ~/.copaw/projects"
-    log_info "User workflows preserved in ~/.copaw/workflows"
-
-    log_success "CoPaw uninstalled"
-
-# 更新命令
+# 更新命令 - 使用外部脚本文件
 update:
-  - |
-    set +e
+  - bash ~/plugins-config/copaw/scripts/update.sh
 
-    # 清理 uv 缓存，避免权限问题
-    log_info "Cleaning uv cache..."
-    rm -rf ~/.cache/uv 2>/dev/null || true
-    mkdir -p ~/.cache/uv
-
-    log_info "Updating CoPaw..."
-
-    # CoPaw 安装脚本会处理更新，无需备份
-    # 用户数据在 ~/.copaw 目录下，不会被影响
-
-    # 执行安装脚本
-    if [ -n "$INSTALL_PROXY" ]; then
-      curl -fsSL --proxy "$INSTALL_PROXY" https://copaw.agentscope.io/install.sh | bash
-    elif [ -n "$HTTPS_PROXY" ]; then
-      curl -fsSL --proxy "$HTTPS_PROXY" https://copaw.agentscope.io/install.sh | bash
-    else
-      curl -fsSL https://copaw.agentscope.io/install.sh | bash
-    fi
-
-    # 验证更新
-    if command -v copaw &>/dev/null; then
-      copaw -h >/dev/null 2>&1 && {
-        log_success "CoPaw updated successfully"
-      } || {
-        log_error "Update verification failed"
-        exit 1
-      }
-    else
-      log_error "Update failed: copaw command not found"
-      exit 1
-    fi
+# 标签
+tags:
+  - ai
+  - coding

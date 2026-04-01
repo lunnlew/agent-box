@@ -8,59 +8,9 @@ requires:
   - docker
   - bash
 
-# 安装命令
+# 安装命令 - 使用外部脚本文件
 install:
-  - |
-    set -e
-    log_info "Cloning DeerFlow repository..."
-
-    # 检查是否已存在
-    if [ -d ~/deer-flow ]; then
-      log_info "DeerFlow repository already exists, updating..."
-      cd ~/deer-flow
-      git pull || true
-    else
-      log_info "Cloning DeerFlow from GitHub..."
-      git clone https://github.com/bytedance/deer-flow.git ~/deer-flow
-      cd ~/deer-flow
-    fi
-
-    # 切换到主分支
-    cd ~/deer-flow
-    git checkout main 2>/dev/null || git checkout master 2>/dev/null || true
-
-    # 修复目录权限
-    log_info "Fixing DeerFlow directory permissions..."
-    chown -R agent:agent ~/deer-flow
-    chmod -R 755 ~/deer-flow/docker 2>/dev/null || true
-
-    # 彻底修复 Docker 配置目录权限（重要！）
-    log_info "Fixing Docker config permissions..."
-    mkdir -p ~/.docker
-    chown agent:agent ~/.docker 2>/dev/null || true
-    chmod 755 ~/.docker 2>/dev/null || true
-
-    # 修复 config.json 权限
-    if [ ! -f ~/.docker/config.json ]; then
-      echo '{}' > ~/.docker/config.json
-    fi
-    chown agent:agent ~/.docker/config.json 2>/dev/null || true
-    chmod 644 ~/.docker/config.json 2>/dev/null || true
-
-    # 创建默认配置
-    log_info "Creating default configuration..."
-    cd ~/deer-flow
-    if [ ! -f config.yaml ]; then
-      bash "$HOME/plugins-config/deer-flow/init-config.sh" ~/deer-flow
-    fi
-
-    # 运行 docker-init 预拉取镜像
-    log_info "Running docker-init..."
-    export DEER_FLOW_ROOT="$(bash "$HOME/plugins-config/deer-flow/setup-docker-root.sh" ~/deer-flow)"
-    log_info "DEER_FLOW_ROOT set to: $DEER_FLOW_ROOT"
-    make docker-init || log_warning "docker-init skipped (local sandbox mode)"
-
-    log_success "DeerFlow repository cloned to ~/deer-flow"
+  - bash ~/plugins-config/deer-flow/scripts/install.sh
 
 # 环境变量配置
 env:
@@ -73,7 +23,7 @@ volumes:
   - ~/deer-flow/.env
   - ~/deer-flow/config.yaml
 
-# 健康检查 - 检查服务是否响应
+# 健康检查
 healthcheck:
   command: curl -sf http://localhost:${DEERFLOW_PORT:-2026} >/dev/null 2>&1 || docker ps --filter name=deer-flow --filter status=running -q | grep -q .
 
@@ -81,106 +31,21 @@ healthcheck:
 service:
   daemon: false
   auto_start: true
-  command: |
-    # 检查 DeerFlow 容器是否已在运行
-    if docker ps --filter name=deer-flow --filter status=running -q 2>/dev/null | grep -q .; then
-      echo "DeerFlow is already running"
-      exit 0
-    fi
+  command: bash ~/plugins-config/deer-flow/scripts/start.sh
+  stop_command: bash ~/plugins-config/deer-flow/scripts/stop.sh
+  restart_command: bash ~/plugins-config/deer-flow/scripts/restart.sh
 
-    # 执行启动脚本
-    bash "$HOME/plugins-config/deer-flow/start.sh"
-  stop_command: |
-    cd ~/deer-flow
-    # 修复权限
-    chown agent:agent ~/.docker 2>/dev/null || true
-    chmod 755 ~/.docker 2>/dev/null || true
-    echo '{}' > ~/.docker/config.json
-    chown agent:agent ~/.docker/config.json 2>/dev/null || true
-    chmod 644 ~/.docker/config.json 2>/dev/null || true
-    # 设置 DEER_FLOW_ROOT 为主机路径
-    export DEER_FLOW_ROOT="$(bash "$HOME/plugins-config/deer-flow/setup-docker-root.sh" ~/deer-flow)"
-    make docker-stop 2>/dev/null || true
-    docker stop deer-flow 2>/dev/null || true
-  restart_command: |
-    cd ~/deer-flow
-    # 修复权限
-    chown agent:agent ~/.docker 2>/dev/null || true
-    chmod 755 ~/.docker 2>/dev/null || true
-    echo '{}' > ~/.docker/config.json
-    chown agent:agent ~/.docker/config.json 2>/dev/null || true
-    chmod 644 ~/.docker/config.json 2>/dev/null || true
-    # 设置 DEER_FLOW_ROOT 为主机路径
-    export DEER_FLOW_ROOT="$(bash "$HOME/plugins-config/deer-flow/setup-docker-root.sh" ~/deer-flow)"
-    make docker-stop 2>/dev/null || true
-    sleep 2
-    make docker-start &
-
-# 卸载命令
+# 卸载命令 - 使用外部脚本文件
 uninstall:
-  - |
-    set +e
-    log_info "Uninstalling DeerFlow..."
+  - bash ~/plugins-config/deer-flow/scripts/uninstall.sh
 
-    # 停止服务
-    cd ~/deer-flow 2>/dev/null || true
-    make docker-stop 2>/dev/null || true
-
-    # 删除容器
-    docker stop deer-flow 2>/dev/null || true
-    docker rm deer-flow 2>/dev/null || true
-
-    # 清理源代码（保留用户配置）
-    log_info "Preserving user configuration in ~/deer-flow/.env and ~/deer-flow/config.yaml"
-    if [ -d ~/deer-flow ]; then
-      # 备份配置
-      cp ~/deer-flow/.env ~/deer-flow.env.bak 2>/dev/null || true
-      cp ~/deer-flow/config.yaml ~/deer-flow.config.yaml.bak 2>/dev/null || true
-      # 删除源代码
-      rm -rf ~/deer-flow
-      log_info "Configuration backed up"
-    fi
-
-    log_success "DeerFlow uninstalled"
-
-# 更新命令
+# 更新命令 - 使用外部脚本文件
 update:
-  - |
-    set +e
-    log_info "Updating DeerFlow..."
+  - bash ~/plugins-config/deer-flow/scripts/update.sh
 
-    cd ~/deer-flow 2>/dev/null || {
-      log_error "DeerFlow not installed"
-      exit 1
-    }
-
-    # 备份配置
-    if [ -f config.yaml ]; then
-      cp config.yaml config.yaml.bak
-    fi
-    if [ -f .env ]; then
-      cp .env .env.bak
-    fi
-
-    # Git pull 更新
-    git fetch origin
-    git checkout main 2>/dev/null || git checkout master 2>/dev/null || true
-    git pull origin $(git branch --show-current 2>/dev/null || echo "main")
-
-    # 恢复配置
-    if [ -f config.yaml.bak ]; then
-      mv config.yaml.bak config.yaml
-    fi
-    if [ -f .env.bak ]; then
-      mv .env.bak .env
-    fi
-
-    # 重启服务
-    make docker-stop 2>/dev/null || true
-    make docker-init 2>/dev/null || true
-    make docker-start &
-
-    log_success "DeerFlow updated"
+# 安装后提示 - 使用外部脚本文件
+post_install:
+  - bash ~/plugins-config/deer-flow/scripts/post_install.sh
 
 # 服务端口信息
 ports:

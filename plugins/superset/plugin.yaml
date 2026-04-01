@@ -8,83 +8,13 @@ requires:
   - curl
   - bash
 
-# 安装命令
+# 安装命令 - 使用外部脚本文件
 install:
-  - |
-    set +e
+  - bash ~/plugins-config/superset/scripts/install.sh
 
-    log_info "Installing Superset..."
-
-    # 创建目录
-    mkdir -p ~/tools/appimages/Superset
-    mkdir -p ~/.superset ~/logs
-    rm -rf ~/tools/appimages/Superset/* 2>/dev/null || true
-
-    # 下载 AppImage
-    log_info "Downloading Superset v1.1.7..."
-    curl -fsSL -o ~/tools/appimages/Superset/Superset.AppImage \
-      https://github.com/superset-sh/superset/releases/download/desktop-v1.1.7/superset-1.1.7-x86_64.AppImage
-
-    # 设置权限
-    chmod +x ~/tools/appimages/Superset/Superset.AppImage
-
-    # 提取 AppImage（Docker 容器没有 FUSE 支持）
-    log_info "Extracting AppImage..."
-    cd ~/tools/appimages/Superset && ./Superset.AppImage --appimage-extract 2>/dev/null || true
-
-    # 修复解压后的权限问题（squashfs 提取后文件属于 root，需要给所有用户权限）
-    log_info "Fixing permissions..."
-    chmod -R 755 ~/tools/appimages/Superset/squashfs-root 2>/dev/null || true
-    chmod +x ~/tools/appimages/Superset/squashfs-root/AppRun 2>/dev/null || true
-    if [ -f ~/tools/appimages/Superset/squashfs-root/AppRun.wrapped ]; then
-      chmod +x ~/tools/appimages/Superset/squashfs-root/AppRun.wrapped 2>/dev/null || true
-    fi
-
-    # 复制启动脚本
-    if [ -f /home/agent/plugins-config/superset/start-superset.sh ]; then
-      cp /home/agent/plugins-config/superset/start-superset.sh ~/tools/appimages/Superset/
-      chmod +x ~/tools/appimages/Superset/start-superset.sh
-    fi
-
-    # 验证安装
-    if [ ! -f ~/tools/appimages/Superset/squashfs-root/AppRun ]; then
-      log_error "Installation failed: AppRun not found"
-      exit 1
-    fi
-
-    log_success "Superset installed successfully"
-
-# 安装后配置
+# 安装后配置 - 使用外部脚本文件
 post_install:
-  - |
-    echo ""
-    echo "============================================"
-    echo "  Superset 安装完成!"
-    echo "============================================"
-    echo ""
-    echo "访问地址：http://localhost:6081/vnc.html (通过 noVNC)"
-    echo "安装目录：~/tools/appimages/Superset"
-    echo "配置目录：~/.superset"
-    echo ""
-    echo "依赖服务：xvfb"
-    echo "============================================"
-    echo ""
-
-# 安装后配置
-post_install:
-  - |
-    echo ""
-    echo "============================================"
-    echo "  Superset 安装完成!"
-    echo "============================================"
-    echo ""
-    echo "访问地址：http://localhost:6081/vnc.html"
-    echo "安装目录：~/tools/appimages/Superset"
-    echo "配置目录：~/.superset"
-    echo ""
-    echo "依赖服务：xvfb (仅复用 Xvfb 虚拟显示)"
-    echo "============================================"
-    echo ""
+  - bash ~/plugins-config/superset/scripts/post_install.sh
 
 # 环境变量
 env:
@@ -98,89 +28,25 @@ volumes:
 
 # 服务配置（GUI 应用服务）
 service:
-  # 常驻服务，使用 Supervisor 管理
   daemon: true
-  # 服务启动后自动启动
   auto_start: true
-  # 服务崩溃后自动重启
   restart: true
-  # 最大重启次数
   max_restarts: 5
-  # 启动命令
-  command: /home/agent/tools/appimages/Superset/start-superset.sh
-  # ⚠️ 注意：daemon 服务使用 supervisorctl stop/start/restart
-  # 不配置 stop_command 和 restart_command
+  command: bash ~/plugins-config/superset/scripts/start.sh
 
 # 健康检查
 healthcheck:
   command: test -f ~/tools/appimages/Superset/squashfs-root/AppRun
 
-# 卸载命令
+# 卸载命令 - 使用外部脚本文件
 uninstall:
-  - |
-    set +e
+  - bash ~/plugins-config/superset/scripts/uninstall.sh
 
-    log_info "Uninstalling Superset..."
-
-    # 停止进程
-    pkill -f "Superset" 2>/dev/null || true
-    pkill -f "AppRun" 2>/dev/null || true
-
-    # 清理安装目录
-    rm -rf ~/tools/appimages/Superset 2>/dev/null || true
-
-    rm -rf ~/supervisor/superset.conf 2>/dev/null || true
-    rm -rf ~/supervisor/superset.sh 2>/dev/null || true
-
-    # ⚠️ 保留用户配置
-    # rm -rf ~/.superset 2>/dev/null || true
-
-    log_success "Superset uninstalled"
-
-# 更新命令
+# 更新命令 - 使用外部脚本文件
 update:
-  - |
-    set +e
+  - bash ~/plugins-config/superset/scripts/update.sh
 
-    log_info "Updating Superset..."
-
-    # 停止当前服务
-    pkill -f "Superset" 2>/dev/null || true
-    pkill -f "AppRun" 2>/dev/null || true
-
-    # 清理旧版本
-    rm -rf ~/tools/appimages/Superset 2>/dev/null || true
-
-    # 重新安装
-    mkdir -p ~/tools/appimages/Superset
-
-    log_info "Downloading Superset v1.1.7..."
-    curl -fsSL -o ~/tools/appimages/Superset/Superset.AppImage \
-      https://github.com/superset-sh/superset/releases/download/desktop-v1.1.7/superset-1.1.7-x86_64.AppImage
-
-    chmod +x ~/tools/appimages/Superset/Superset.AppImage
-
-    log_info "Extracting AppImage..."
-    cd ~/tools/appimages/Superset && ./Superset.AppImage --appimage-extract 2>/dev/null || true
-
-    # 修复解压后的权限问题（squashfs 提取后文件属于 root，需要给所有用户权限）
-    log_info "Fixing permissions..."
-    chmod -R 755 ~/tools/appimages/Superset/squashfs-root 2>/dev/null || true
-    chmod +x ~/tools/appimages/Superset/squashfs-root/AppRun 2>/dev/null || true
-    if [ -f ~/tools/appimages/Superset/squashfs-root/AppRun.wrapped ]; then
-      chmod +x ~/tools/appimages/Superset/squashfs-root/AppRun.wrapped 2>/dev/null || true
-    fi
-
-    # 复制启动脚本到可写目录
-    if [ -f /home/agent/plugins-config/superset/start-superset.sh ]; then
-      cp /home/agent/plugins-config/superset/start-superset.sh ~/tools/appimages/Superset/
-      chmod +x ~/tools/appimages/Superset/start-superset.sh
-    fi
-
-    # 验证
-    if [ ! -f ~/tools/appimages/Superset/squashfs-root/AppRun ]; then
-      log_error "Update verification failed"
-      exit 1
-    fi
-
-    log_success "Superset updated successfully"
+# 标签
+tags:
+  - gui
+  - ide

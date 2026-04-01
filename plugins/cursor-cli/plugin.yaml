@@ -8,58 +8,18 @@ requires:
   - curl
   - bash
 
-# 安装命令
+# 安装命令 - 使用外部脚本文件
 install:
-  - |
-    set +e
-    
-    log_info "Installing Cursor CLI..."
-    
-    # 清理旧版本（如果存在）
-    log_info "Checking for existing installation..."
-    if [ -f ~/.local/bin/agent ]; then
-      log_info "Found existing installation, removing..."
-      rm -f ~/.local/bin/agent 2>/dev/null || true
-    fi
-    if [ -d ~/.cursor ]; then
-      log_info "Backing up old config (keeping user data)..."
-      mv ~/.cursor ~/.cursor.bak.$(date +%Y%m%d%H%M%S) 2>/dev/null || true
-    fi
-    
-    # 执行安装脚本（支持代理）
-    log_info "Downloading and running install script..."
-    if [ -n "$INSTALL_PROXY" ]; then
-      curl -fsSL --proxy "$INSTALL_PROXY" https://cursor.com/install | bash
-    elif [ -n "$HTTPS_PROXY" ]; then
-      curl -fsSL --proxy "$HTTPS_PROXY" https://cursor.com/install | bash
-    else
-      curl -fsSL https://cursor.com/install | bash
-    fi
-    
-    # 验证安装
-    log_info "Verifying installation..."
-    if [ ! -f ~/.local/bin/agent ] && ! command -v agent &>/dev/null; then
-      log_error "Installation failed: agent binary not found"
-      # 恢复备份
-      if [ -d ~/.cursor.bak.* ]; then
-        mv ~/.cursor.bak.* ~/.cursor 2>/dev/null || true
-      fi
-      exit 1
-    fi
-    
-    # 恢复用户配置（如果之前有备份）
-    if [ -d ~/.cursor.bak.* ]; then
-      log_info "Restoring user configuration..."
-      cp -r ~/.cursor.bak.*/ ~/.cursor/ 2>/dev/null || true
-      rm -rf ~/.cursor.bak.* 2>/dev/null || true
-    fi
-    
-    log_success "Cursor CLI installed successfully"
+  - bash ~/plugins-config/cursor-cli/scripts/install.sh
 
 # 环境变量配置
 env:
   OPENAI_API_KEY: optional
   ANTHROPIC_API_KEY: optional
+
+# 安装后提示 - 使用外部脚本文件
+post_install:
+  - bash ~/plugins-config/cursor-cli/scripts/post_install.sh
 
 # 需要持久化的目录
 volumes:
@@ -69,66 +29,16 @@ volumes:
 healthcheck:
   command: agent --version
 
-# 卸载命令
+# 卸载命令 - 使用外部脚本文件
 uninstall:
-  - |
-    set +e
-    
-    log_info "Uninstalling Cursor CLI..."
-    
-    # 停止可能的进程
-    pkill -f "agent" 2>/dev/null || true
-    
-    # 移除二进制文件（可能的安装位置）
-    rm -f ~/.local/bin/agent 2>/dev/null || true
-    rm -f /usr/local/bin/agent 2>/dev/null || true
-    rm -f ~/.cargo/bin/agent 2>/dev/null || true
-    
-    # 清理缓存
-    rm -rf ~/.cache/cursor 2>/dev/null || true
-    
-    # ⚠️ 保留用户数据（项目、设置、历史记录等）
-    # 如需完全清理，手动执行：rm -rf ~/.cursor
-    log_info "User data preserved in ~/.cursor"
-    
-    log_success "Cursor CLI uninstalled"
+  - bash ~/plugins-config/cursor-cli/scripts/uninstall.sh
 
-# 更新命令
+# 更新命令 - 使用外部脚本文件
 update:
-  - |
-    set +e
-    
-    log_info "Updating Cursor CLI..."
-    
-    # 备份用户配置
-    if [ -d ~/.cursor ]; then
-      log_info "Backing up configuration..."
-      cp -r ~/.cursor ~/.cursor.bak.$(date +%Y%m%d%H%M%S) 2>/dev/null || true
-    fi
-    
-    # 执行安装脚本（会覆盖旧版本）
-    log_info "Running install script..."
-    if [ -n "$INSTALL_PROXY" ]; then
-      curl -fsSL --proxy "$INSTALL_PROXY" https://cursor.com/install | bash
-    elif [ -n "$HTTPS_PROXY" ]; then
-      curl -fsSL --proxy "$HTTPS_PROXY" https://cursor.com/install | bash
-    else
-      curl -fsSL https://cursor.com/install | bash
-    fi
-    
-    # 验证更新
-    log_info "Verifying update..."
-    if command -v agent &>/dev/null; then
-      agent --version
-      log_success "Cursor CLI updated successfully"
-    else
-      log_error "Update verification failed"
-      # 恢复备份
-      if [ -d ~/.cursor.bak.* ]; then
-        mv ~/.cursor.bak.* ~/.cursor 2>/dev/null || true
-      fi
-      exit 1
-    fi
-    
-    # 清理备份
-    rm -rf ~/.cursor.bak.* 2>/dev/null || true
+  - bash ~/plugins-config/cursor-cli/scripts/update.sh
+
+# 标签
+tags:
+  - cli
+  - ai
+  - coding-assistant

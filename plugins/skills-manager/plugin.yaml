@@ -9,83 +9,24 @@ requires:
   - curl
   - bash
 
-# 安装命令
+# 安装命令 - 使用外部脚本文件
 install:
-  - |
-    set +e
+  - bash ~/plugins-config/skills-manager/scripts/install.sh
 
-    log_info "Installing Skills Manager..."
-
-    # 创建目录
-    mkdir -p ~/tools/appimages/Skills-Manager
-    mkdir -p ~/.skills-manager ~/logs
-    rm -rf ~/tools/appimages/Skills-Manager/* 2>/dev/null || true
-
-    # 下载 AppImage
-    log_info "Downloading Skills Manager v1.1.5..."
-    curl -fsSL -o ~/tools/appimages/Skills-Manager/Skills-Manager.AppImage \
-      https://github.com/jiweiyeah/Skills-Manager/releases/download/v1.1.5/Skills.Manager_1.1.5_amd64.AppImage
-
-    # 设置权限
-    chmod +x ~/tools/appimages/Skills-Manager/Skills-Manager.AppImage
-
-    # 提取 AppImage（Docker 容器没有 FUSE 支持）
-    log_info "Extracting AppImage..."
-    cd ~/tools/appimages/Skills-Manager && ./Skills-Manager.AppImage --appimage-extract 2>/dev/null || true
-
-    # 修复解压后的权限问题（squashfs 提取后文件属于 root，需要给所有用户权限）
-    log_info "Fixing permissions..."
-    chmod -R 755 ~/tools/appimages/Skills-Manager/squashfs-root 2>/dev/null || true
-    chmod +x ~/tools/appimages/Skills-Manager/squashfs-root/AppRun 2>/dev/null || true
-    if [ -f ~/tools/appimages/Skills-Manager/squashfs-root/AppRun.wrapped ]; then
-      chmod +x ~/tools/appimages/Skills-Manager/squashfs-root/AppRun.wrapped 2>/dev/null || true
-    fi
-
-    # 复制启动脚本到可写目录
-    log_info "Copying startup script..."
-    if [ -f /home/agent/plugins-config/skills-manager/start-skills-manager.sh ]; then
-      cp /home/agent/plugins-config/skills-manager/start-skills-manager.sh ~/tools/appimages/Skills-Manager/
-      chmod +x ~/tools/appimages/Skills-Manager/start-skills-manager.sh
-      log_info "Startup script copied successfully"
-    else
-      log_warning "Startup script source not found at /home/agent/plugins-config/skills-manager/start-skills-manager.sh"
-      log_warning "Skipping startup script copy (service may fail to start)"
-    fi
-
-    # 验证安装
-    if [ ! -f ~/tools/appimages/Skills-Manager/squashfs-root/AppRun ]; then
-      log_error "Installation failed: AppRun not found (AppImage extraction may have failed)"
-      log_info "Please check network connection and retry: agentbox install skills-manager --force"
-      # ⚠️ 不 exit，让脚本继续执行，至少保留已复制的启动脚本
-    else
-      log_success "Skills Manager installed successfully"
-    fi
-
-# 环境变量
+# 环境变量配置
 env:
   SKILLS_MANAGER_NOVNC_PORT: export SKILLS_MANAGER_NOVNC_PORT=${SKILLS_MANAGER_NOVNC_PORT:-6080}
   SKILLS_MANAGER_VNC_PORT: export SKILLS_MANAGER_VNC_PORT=${SKILLS_MANAGER_VNC_PORT:-5900}
-
-# 安装后配置
-post_install:
-  - |
-    echo ""
-    echo "============================================"
-    echo "  Skills Manager 安装完成!"
-    echo "============================================"
-    echo ""
-    echo "访问地址：http://localhost:6080/vnc.html (独立 noVNC 实例)"
-    echo "安装目录：~/tools/appimages/Skills-Manager"
-    echo "配置目录：~/.skills-manager"
-    echo ""
-    echo "注意：使用独立 Xvfb 显示环境 (:99)"
-    echo "============================================"
-    echo ""
+  SKILLS_MANAGER_VERSION: export SKILLS_MANAGER_VERSION=${SKILLS_MANAGER_VERSION:-1.1.5}
 
 # 需要持久化的目录
 volumes:
   - ~/.skills-manager
   - ~/tools/appimages/Skills-Manager
+
+# 健康检查
+healthcheck:
+  command: test -f ~/tools/appimages/Skills-Manager/squashfs-root/AppRun
 
 # 服务配置（GUI 应用服务）
 service:
@@ -98,84 +39,32 @@ service:
   # 最大重启次数
   max_restarts: 5
   # 启动命令
-  command: /home/agent/tools/appimages/Skills-Manager/start-skills-manager.sh
+  command: bash ~/plugins-config/skills-manager/scripts/start.sh
+  # 停止命令
+  stop_command: bash ~/plugins-config/skills-manager/scripts/stop.sh
+  # 重启命令
+  restart_command: bash ~/plugins-config/skills-manager/scripts/restart.sh
 
-# 健康检查
-healthcheck:
-  command: test -f ~/tools/appimages/Skills-Manager/squashfs-root/AppRun
-
-# 卸载命令
+# 卸载命令 - 使用外部脚本文件
 uninstall:
-  - |
-    set +e
+  - bash ~/plugins-config/skills-manager/scripts/uninstall.sh
 
-    log_info "Uninstalling Skills Manager..."
-
-    # 停止进程
-    pkill -f "Skills-Manager" 2>/dev/null || true
-    pkill -f "x11vnc.*5900" 2>/dev/null || true
-    pkill -f "websockify.*6080" 2>/dev/null || true
-
-    rm -rf ~/supervisor/skills-manager.conf 2>/dev/null || true
-    rm -rf ~/supervisor/skills-manager.sh 2>/dev/null || true
-
-    # 清理安装目录
-    rm -rf ~/tools/appimages/Skills-Manager 2>/dev/null || true
-
-    # ⚠️ 保留用户配置
-    # rm -rf ~/.skills-manager 2>/dev/null || true
-
-    log_success "Skills Manager uninstalled"
-
-# 更新命令
+# 更新命令 - 使用外部脚本文件
 update:
-  - |
-    set +e
+  - bash ~/plugins-config/skills-manager/scripts/update.sh
 
-    log_info "Updating Skills Manager..."
+# 安装后提示 - 使用外部脚本文件
+post_install:
+  - bash ~/plugins-config/skills-manager/scripts/post_install.sh
 
-    # 停止当前服务
-    pkill -f "Skills-Manager" 2>/dev/null || true
-    pkill -f "x11vnc.*5900" 2>/dev/null || true
-    pkill -f "websockify.*6080" 2>/dev/null || true
+# 服务端口信息
+ports:
+  - 6080: Skills Manager noVNC (独立实例)
+  - 5900: Skills Manager VNC (独立实例)
 
-    # 清理旧版本
-    rm -rf ~/tools/appimages/Skills-Manager 2>/dev/null || true
-
-    # 重新安装
-    mkdir -p ~/tools/appimages/Skills-Manager
-
-    log_info "Downloading Skills Manager v1.1.5..."
-    curl -fsSL -o ~/tools/appimages/Skills-Manager/Skills-Manager.AppImage \
-      https://github.com/jiweiyeah/Skills-Manager/releases/download/v1.1.5/Skills.Manager_1.1.5_amd64.AppImage
-
-    chmod +x ~/tools/appimages/Skills-Manager/Skills-Manager.AppImage
-
-    log_info "Extracting AppImage..."
-    cd ~/tools/appimages/Skills-Manager && ./Skills-Manager.AppImage --appimage-extract 2>/dev/null || true
-
-    # 修复解压后的权限问题（squashfs 提取后文件属于 root，需要给所有用户权限）
-    log_info "Fixing permissions..."
-    chmod -R 755 ~/tools/appimages/Skills-Manager/squashfs-root 2>/dev/null || true
-    chmod +x ~/tools/appimages/Skills-Manager/squashfs-root/AppRun 2>/dev/null || true
-    if [ -f ~/tools/appimages/Skills-Manager/squashfs-root/AppRun.wrapped ]; then
-      chmod +x ~/tools/appimages/Skills-Manager/squashfs-root/AppRun.wrapped 2>/dev/null || true
-    fi
-
-    # 复制启动脚本到可写目录
-    log_info "Copying startup script..."
-    if [ -f /home/agent/plugins-config/skills-manager/start-skills-manager.sh ]; then
-      cp /home/agent/plugins-config/skills-manager/start-skills-manager.sh ~/tools/appimages/Skills-Manager/
-      chmod +x ~/tools/appimages/Skills-Manager/start-skills-manager.sh
-      log_info "Startup script copied successfully"
-    else
-      log_warning "Startup script source not found"
-    fi
-
-    # 验证
-    if [ ! -f ~/tools/appimages/Skills-Manager/squashfs-root/AppRun ]; then
-      log_error "Update verification failed: AppRun not found"
-      log_info "Please retry: agentbox install skills-manager --force"
-    else
-      log_success "Skills Manager updated successfully"
-    fi
+# 标签
+tags:
+  - gui
+  - novnc
+  - skills
+  - appimage

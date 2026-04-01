@@ -8,38 +8,13 @@ description: Xvfb 虚拟显示基础服务 - 仅提供虚拟 X 显示环境
 requires:
   - bash
 
-# 安装命令
+# 安装命令 - 使用外部脚本文件
 install:
-  - |
-    set +e
+  - bash ~/plugins-config/xvfb/scripts/install.sh
 
-    log_info "Installing Xvfb..."
-    rm -rf  ~/tools/xvfb-scripts/* 2>/dev/null || true
-
-    # 复制启动脚本到可写目录
-    if [ -f /home/agent/plugins-config/xvfb/start-xvfb.sh ]; then
-      mkdir -p ~/tools/xvfb-scripts
-      cp /home/agent/plugins-config/xvfb/start-xvfb.sh ~/tools/xvfb-scripts/
-      chmod +x ~/tools/xvfb-scripts/start-xvfb.sh
-    fi
-
-    log_success "Xvfb installed successfully"
-
-# 安装后配置
+# 安装后配置 - 使用外部脚本文件
 post_install:
-  - |
-    echo ""
-    echo "============================================"
-    echo "  Xvfb 安装完成!"
-    echo "============================================"
-    echo ""
-    echo "显示环境：DISPLAY=:99"
-    echo "脚本目录：~/plugins-config/xvfb"
-    echo ""
-    echo "注意：此插件仅提供虚拟显示环境"
-    echo "各 GUI 应用需自行启动 x11vnc + noVNC 实例"
-    echo "============================================"
-    echo ""
+  - bash ~/plugins-config/xvfb/scripts/post_install.sh
 
 # 环境变量
 env:
@@ -53,50 +28,25 @@ volumes:
 
 # 服务配置（基础显示服务）
 service:
-  # 常驻服务，使用 Supervisor 管理
   daemon: true
-  # 服务启动后自动启动
   auto_start: true
-  # 服务崩溃后自动重启
   restart: true
-  # 最大重启次数
   max_restarts: 3
-  # 启动命令
-  command: /home/agent/tools/xvfb-scripts/start-xvfb.sh
+  command: bash ~/plugins-config/xvfb/scripts/start.sh
 
 # 健康检查
 healthcheck:
-  command: "pgrep -f 'Xvfb :99'"
+  command: pgrep -f 'Xvfb :99'
 
-# 卸载命令
+# 卸载命令 - 使用外部脚本文件
 uninstall:
-  - |
-    set +e
+  - bash ~/plugins-config/xvfb/scripts/uninstall.sh
 
-    log_info "Uninstalling Xvfb..."
-
-    # 停止服务
-    pkill -f "Xvfb.*:99" 2>/dev/null || true
-
-    # 清理临时文件
-    rm -rf /tmp/.X11-unix/X99 2>/dev/null || true
-
-    rm -rf ~/supervisor/xvfb.conf 2>/dev/null || true
-    rm -rf ~/supervisor/xvfb.sh 2>/dev/null || true
-
-    log_success "Xvfb uninstalled"
-
-# 更新命令
+# 更新命令 - 使用外部脚本文件
 update:
-  - |
-    set +e
+  - bash ~/plugins-config/xvfb/scripts/update.sh
 
-    log_info "Updating Xvfb..."
-
-    # 重新复制启动脚本
-    if [ -f /home/agent/plugins-config/xvfb/start-xvfb.sh ]; then
-      cp /home/agent/plugins-config/xvfb/start-xvfb.sh ~/tools/xvfb-scripts/
-      chmod +x ~/tools/xvfb-scripts/start-xvfb.sh
-    fi
-
-    log_success "Xvfb updated successfully"
+# 标签
+tags:
+  - system
+  - display

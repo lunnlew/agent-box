@@ -8,46 +8,9 @@ requires:
   - curl
   - bash
 
-# 安装命令
+# 安装命令 - 使用外部脚本文件
 install:
-  - |
-    set +e
-    
-    log_info "Installing Web Terminal (ttyd)..."
-    
-    ARCH=$(uname -m)
-    case $ARCH in
-      x86_64) ARCH="x86_64" ;;
-      aarch64) ARCH="aarch64" ;;
-      *) log_error "Unsupported architecture: $ARCH"; exit 1 ;;
-    esac
-    
-    TTYD_VERSION="1.7.7"
-    URL="https://github.com/tsl0922/ttyd/releases/download/${TTYD_VERSION}/ttyd.${ARCH}"
-    
-    log_info "Downloading ttyd ${TTYD_VERSION} for ${ARCH}..."
-    
-    # 下载（支持代理）
-    if [ -n "$INSTALL_PROXY" ]; then
-      curl -fsSL --proxy "$INSTALL_PROXY" -o /tmp/ttyd "$URL"
-    elif [ -n "$HTTPS_PROXY" ]; then
-      curl -fsSL --proxy "$HTTPS_PROXY" -o /tmp/ttyd "$URL"
-    else
-      curl -fsSL -o /tmp/ttyd "$URL"
-    fi
-    
-    # 安装
-    chmod +x /tmp/ttyd
-    mv /tmp/ttyd $HOME/tools/bin/ttyd
-    
-    # 验证安装
-    if ! command -v ttyd &>/dev/null; then
-      log_error "Installation failed: ttyd command not found"
-      exit 1
-    fi
-    
-    ttyd --version
-    log_success "Web Terminal installed successfully"
+  - bash ~/plugins-config/web-terminal/scripts/install.sh
 
 # 环境变量配置
 env:
@@ -55,94 +18,34 @@ env:
   WEB_TERMINAL_CREDENTIAL: optional
   PATH_APPEND: ~/tools/bin
 
-# 安装后配置
+# 安装后配置 - 使用外部脚本文件
 post_install:
-  - |
-    echo ""
-    echo "============================================"
-    echo "  Web Terminal 安装完成!"
-    echo "============================================"
-    echo ""
-    echo "访问地址：http://localhost:${WEB_TERMINAL_PORT:-7681}"
-    echo "二进制文件：~/tools/bin/ttyd"
-    echo ""
-    echo "手动启动：ttyd --port ${WEB_TERMINAL_PORT:-7681} bash"
-    echo "============================================"
-    echo ""
+  - bash ~/plugins-config/web-terminal/scripts/post_install.sh
 
 # 需要持久化的目录
-# Web Terminal 无需持久化数据
 volumes: []
 
 # 服务配置（Web 终端服务）
 service:
-  # 常驻服务，使用 Supervisor 管理
   daemon: true
-  # 服务启动后自动启动
   auto_start: true
-  # 服务崩溃后自动重启
   restart: true
-  # 最大重启次数
   max_restarts: 3
-  # 启动命令
-  command: bash -c 'ttyd --port ${WEB_TERMINAL_PORT:-7681} --writable --reconnect bash'
-  # ⚠️ 注意：daemon 服务使用 supervisorctl stop/start/restart
-  # 不配置 stop_command 和 restart_command
+  command: bash ~/plugins-config/web-terminal/scripts/start.sh
 
 # 健康检查
 healthcheck:
   command: ttyd --version
 
-# 卸载命令
+# 卸载命令 - 使用外部脚本文件
 uninstall:
-  - |
-    set +e
-    
-    log_info "Uninstalling Web Terminal..."
-    
-    # 停止进程
-    pkill -f "ttyd" 2>/dev/null || true
-    
-    # 移除二进制文件
-    rm -f $HOME/tools/bin/ttyd 2>/dev/null || true
+  - bash ~/plugins-config/web-terminal/scripts/uninstall.sh
 
-    rm -rf ~/supervisor/web-terminal.conf 2>/dev/null || true
-    rm -rf ~/supervisor/web-terminal.sh 2>/dev/null || true
-    
-    log_success "Web Terminal uninstalled"
-
-# 更新命令
+# 更新命令 - 使用外部脚本文件
 update:
-  - |
-    set +e
-    
-    log_info "Updating Web Terminal..."
-    
-    ARCH=$(uname -m)
-    case $ARCH in
-      x86_64) ARCH="x86_64" ;;
-      aarch64) ARCH="aarch64" ;;
-    esac
-    
-    TTYD_VERSION="1.7.7"
-    URL="https://github.com/tsl0922/ttyd/releases/download/${TTYD_VERSION}/ttyd.${ARCH}"
-    
-    # 停止当前服务
-    pkill -f "ttyd" 2>/dev/null || true
-    
-    # 下载新版本
-    if [ -n "$INSTALL_PROXY" ]; then
-      curl -fsSL --proxy "$INSTALL_PROXY" -o /tmp/ttyd "$URL"
-    elif [ -n "$HTTPS_PROXY" ]; then
-      curl -fsSL --proxy "$HTTPS_PROXY" -o /tmp/ttyd "$URL"
-    else
-      curl -fsSL -o /tmp/ttyd "$URL"
-    fi
-    
-    # 安装
-    chmod +x /tmp/ttyd
-    mv /tmp/ttyd $HOME/tools/bin/ttyd
-    
-    # 验证
-    ttyd --version
-    log_success "Web Terminal updated successfully"
+  - bash ~/plugins-config/web-terminal/scripts/update.sh
+
+# 标签
+tags:
+  - web
+  - terminal

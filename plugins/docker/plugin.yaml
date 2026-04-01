@@ -8,115 +8,36 @@ requires:
   - curl
   - bash
 
-# 安装命令
+# 安装命令 - 使用外部脚本文件
 install:
-  - |
-    set +e
-    
-    log_info "Installing Docker CLI..."
-    
-    ARCH=$(uname -m)
-    case $ARCH in
-      x86_64) ARCH="x86_64" ;;
-      aarch64) ARCH="aarch64" ;;
-      *) log_error "Unsupported architecture: $ARCH"; exit 1 ;;
-    esac
-    
-    DOCKER_VERSION="28.0.1"
-    URL="https://download.docker.com/linux/static/stable/${ARCH}/docker-${DOCKER_VERSION}.tgz"
-    
-    log_info "Downloading Docker ${DOCKER_VERSION} for ${ARCH}..."
-    
-    # 下载（支持代理）
-    if [ -n "$INSTALL_PROXY" ]; then
-      curl -fsSL --proxy "$INSTALL_PROXY" -o /tmp/docker.tgz "$URL"
-    elif [ -n "$HTTPS_PROXY" ]; then
-      curl -fsSL --proxy "$HTTPS_PROXY" -o /tmp/docker.tgz "$URL"
-    else
-      curl -fsSL -o /tmp/docker.tgz "$URL"
-    fi
-    
-    # 解压安装
-    log_info "Extracting and installing..."
-    tar -xzf /tmp/docker.tgz -C /tmp
-    mv /tmp/docker/docker $HOME/tools/bin/
-    
-    # 清理临时文件
-    rm -rf /tmp/docker /tmp/docker.tgz
-    
-    # 验证安装
-    if ! command -v docker &>/dev/null; then
-      log_error "Installation failed: docker command not found"
-      exit 1
-    fi
-    
-    docker --version
-    log_success "Docker CLI installed successfully"
+  - bash ~/plugins-config/docker/scripts/install.sh
 
 # 环境变量配置
 env:
   DOCKER_HOST: optional
+  DOCKER_VERSION: export DOCKER_VERSION=${DOCKER_VERSION:-28.0.1}
+
+# 安装后提示 - 使用外部脚本文件
+post_install:
+  - bash ~/plugins-config/docker/scripts/post_install.sh
 
 # 需要持久化的目录
-# Docker CLI 无需持久化数据
 volumes: []
 
 # 健康检查
 healthcheck:
   command: docker --version
 
-# 卸载命令
+# 卸载命令 - 使用外部脚本文件
 uninstall:
-  - |
-    set +e
-    
-    log_info "Uninstalling Docker CLI..."
-    
-    # 移除二进制文件
-    rm -f $HOME/tools/bin/docker 2>/dev/null || true
-    
-    # 移除相关组件（如果存在）
-    rm -f $HOME/tools/bin/docker-compose 2>/dev/null || true
-    rm -f $HOME/tools/bin/ctr 2>/dev/null || true
-    rm -f $HOME/tools/bin/containerd 2>/dev/null || true
-    
-    log_success "Docker CLI uninstalled"
+  - bash ~/plugins-config/docker/scripts/uninstall.sh
 
-# 更新命令
+# 更新命令 - 使用外部脚本文件
 update:
-  - |
-    set +e
-    
-    log_info "Updating Docker CLI..."
-    
-    ARCH=$(uname -m)
-    case $ARCH in
-      x86_64) ARCH="x86_64" ;;
-      aarch64) ARCH="aarch64" ;;
-      *) log_error "Unsupported architecture: $ARCH"; exit 1 ;;
-    esac
-    
-    DOCKER_VERSION="28.0.1"
-    URL="https://download.docker.com/linux/static/stable/${ARCH}/docker-${DOCKER_VERSION}.tgz"
-    
-    log_info "Downloading Docker ${DOCKER_VERSION}..."
-    
-    # 下载（支持代理）
-    if [ -n "$INSTALL_PROXY" ]; then
-      curl -fsSL --proxy "$INSTALL_PROXY" -o /tmp/docker.tgz "$URL"
-    elif [ -n "$HTTPS_PROXY" ]; then
-      curl -fsSL --proxy "$HTTPS_PROXY" -o /tmp/docker.tgz "$URL"
-    else
-      curl -fsSL -o /tmp/docker.tgz "$URL"
-    fi
-    
-    # 解压安装（覆盖旧版本）
-    tar -xzf /tmp/docker.tgz -C /tmp
-    mv /tmp/docker/docker $HOME/tools/bin/
-    
-    # 清理临时文件
-    rm -rf /tmp/docker /tmp/docker.tgz
-    
-    # 验证
-    docker --version
-    log_success "Docker CLI updated successfully"
+  - bash ~/plugins-config/docker/scripts/update.sh
+
+# 标签
+tags:
+  - cli
+  - container
+  - devops

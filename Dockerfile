@@ -1,7 +1,7 @@
 # AgentBox Dockerfile
-# 基于 Ubuntu 22.04 的可插拔 AI Agent 工具集成容器
+# 基于 ubuntu:24.04 的可插拔 AI Agent 工具集成容器
 
-FROM ubuntu:22.04
+FROM ubuntu:24.04
 
 # 构建参数 - 镜像源配置
 # 默认使用国内镜像源加速下载
@@ -28,7 +28,9 @@ ENV PIP_TRUSTED_HOST=${PIP_TRUSTED_HOST}
 ENV GITHUB_PROXY=${GITHUB_PROXY}
 ENV GOPROXY=${GOPROXY}
 
-# 配置 Ubuntu APT 镜像源
+# 配置 Ubuntu APT 镜像源 (兼容 Ubuntu 22.04 和 24.04)
+# Ubuntu 24.04 使用 DEB822 格式: /etc/apt/sources.list.d/ubuntu.sources
+# Ubuntu 22.04 使用传统格式: /etc/apt/sources.list
 RUN if [ -n "$UBUNTU_MIRROR" ]; then \
         case "$UBUNTU_MIRROR" in \
             aliyun) MIRROR_URL="mirrors.aliyun.com" ;; \
@@ -39,8 +41,16 @@ RUN if [ -n "$UBUNTU_MIRROR" ]; then \
             huawei) MIRROR_URL="mirrors.huaweicloud.com" ;; \
             *) MIRROR_URL="$UBUNTU_MIRROR" ;; \
         esac && \
-        sed -i "s@archive.ubuntu.com@${MIRROR_URL}@g" /etc/apt/sources.list && \
-        sed -i "s@security.ubuntu.com@${MIRROR_URL}@g" /etc/apt/sources.list; \
+        # Ubuntu 24.04 DEB822 格式
+        if [ -f /etc/apt/sources.list.d/ubuntu.sources ]; then \
+            sed -i "s@archive.ubuntu.com@${MIRROR_URL}@g" /etc/apt/sources.list.d/ubuntu.sources && \
+            sed -i "s@security.ubuntu.com@${MIRROR_URL}@g" /etc/apt/sources.list.d/ubuntu.sources; \
+        fi && \
+        # Ubuntu 22.04 传统格式 (兼容)
+        if [ -f /etc/apt/sources.list ]; then \
+            sed -i "s@archive.ubuntu.com@${MIRROR_URL}@g" /etc/apt/sources.list && \
+            sed -i "s@security.ubuntu.com@${MIRROR_URL}@g" /etc/apt/sources.list; \
+        fi; \
     fi
 
 # 先安装基础工具 (curl, gpg 等)，用于后续 GPG 密钥导入
@@ -64,8 +74,8 @@ RUN mkdir -p /etc/apt/keyrings && \
 RUN apt-get update && apt-get install -y \
     # 已安装：curl, wget, git, gnupg, ca-certificates
     # 基础工具
-    gosu \
-    # Python 环境
+    sudo \
+    # Python 环境 (Ubuntu 24.04 默认 Python 3.12)
     python3 \
     python3-pip \
     python3-venv \
@@ -74,7 +84,7 @@ RUN apt-get update && apt-get install -y \
     # GUI 支持 (noVNC)
     xvfb \
     x11vnc \
-    novnc \
+    python3-novnc \
     websockify \
     libgtk-3-0 \
     libnotify4 \
@@ -86,7 +96,7 @@ RUN apt-get update && apt-get install -y \
     libdrm2 \
     libxkbcommon0 \
     libgbm1 \
-    libasound2 \
+    libasound2t64 \
     # OpenGL/EGL 支持 (Tauri 应用需要)
     libegl1 \
     libgl1 \
@@ -106,6 +116,23 @@ RUN apt-get update && apt-get install -y \
     # 清理缓存
     && rm -rf /var/lib/apt/lists/* \
     && apt-get clean
+
+# 下载 noVNC 源码（Ubuntu 24.04 的 python3-novnc 包不包含 HTML 文件）
+RUN mkdir -p /usr/share/novnc && \
+    curl -fsSL https://github.com/novnc/noVNC/archive/refs/tags/v1.4.0.tar.gz | tar xzf - -C /usr/share/novnc --strip-components=1 && \
+    # 创建 websockify 需要的文件链接
+    ln -sf /usr/share/novnc/vnc.html /usr/share/novnc/index.html && \
+    # 安装 websockify-js（如果需要）
+    if [ -d /usr/share/novnc/utils ]; then \
+        mkdir -p /usr/share/novnc/utils/websockify && \
+        ln -sf /usr/lib/websockify /usr/share/novnc/utils/websockify/websockify; \
+    fi
+
+# 安装 gosu (Ubuntu 24.04 官方仓库无此包，从 GitHub releases 安装)
+RUN GOSU_VERSION=1.17 && \
+    curl -fsSL https://github.com/tianon/gosu/releases/download/${GOSU_VERSION}/gosu-$(dpkg --print-architecture) -o /usr/local/bin/gosu && \
+    chmod +x /usr/local/bin/gosu && \
+    gosu nobody true # 验证安装
 
 # 配置 npm 镜像源（运行时环境变量优先）
 RUN if [ -n "$NPM_REGISTRY" ]; then \
@@ -139,7 +166,15 @@ RUN npm_config_registry=$(npm config get registry) && \
 RUN curl -LsSf https://astral.sh/uv/install.sh | sh
 
 # 创建非 root 用户和 docker 组
-RUN groupadd -g 999 docker && \
+# Ubuntu 24.04 预设了 ubuntu 用户 (UID 1000)，删除后创建 agent 用户
+RUN if ! getent group docker > /dev/null 2>&1; then \
+        groupadd docker; \
+    fi && \
+    # 删除预设的 ubuntu 用户（如果存在）以释放 UID 1000
+    if getent passwd ubuntu > /dev/null 2>&1; then \
+        userdel -r ubuntu 2>/dev/null || true; \
+    fi && \
+    # 创建 agent 用户（UID 1000，与宿主机 data 目录权限匹配）
     useradd -m -s /bin/bash -u 1000 -G docker agent
 
 # 设置工作目录

@@ -10,64 +10,17 @@ requires:
   - npm
   - git
 
-# 安装命令
+# 安装命令 - 使用外部脚本文件
 install:
-  - |
-    set +e
-
-    log_info "Installing ClawPanel..."
-
-    CLAWPANEL_PATH="$HOME/tools/clawpanel"
-
-    # 检查是否已安装
-    if [ -d "$CLAWPANEL_PATH/dist" ] && [ -f "$CLAWPANEL_PATH/package.json" ]; then
-      log_info "ClawPanel already installed, skipping..."
-    else
-      # 清理旧目录
-      rm -rf "$CLAWPANEL_PATH" 2>/dev/null || true
-      mkdir -p "$CLAWPANEL_PATH"
-
-      # 克隆源码
-      log_info "Cloning ClawPanel repository..."
-      git clone --depth 1 https://github.com/qingchencloud/clawpanel.git "$CLAWPANEL_PATH"
-
-      # 安装依赖（需要 devDependencies 中的 vite 进行构建）
-      log_info "Installing dependencies..."
-      cd "$CLAWPANEL_PATH"
-      npm install
-
-      # 构建
-      log_info "Building ClawPanel..."
-      npm run build
-
-      log_success "ClawPanel installed successfully"
-    fi
+  - bash ~/plugins-config/clawpanel/scripts/install.sh
 
 # 环境变量配置
 env:
   CLAWPANEL_PORT: export CLAWPANEL_PORT=${CLAWPANEL_PORT:-1420}
 
-# 安装后配置
+# 安装后配置 - 使用外部脚本文件
 post_install:
-  - |
-    echo ""
-    echo "============================================"
-    echo "  ClawPanel 安装完成!"
-    echo "============================================"
-    echo ""
-    echo "访问地址：http://localhost:${CLAWPANEL_PORT:-1420}"
-    echo "安装目录：~/tools/clawpanel"
-    echo ""
-    echo "环境变量:"
-    echo "  export CLAWPANEL_PORT=1420"
-    echo ""
-    echo "启动服务:"
-    echo "  agentbox start clawpanel"
-    echo ""
-    echo "或直接运行:"
-    echo "  cd ~/tools/clawpanel && npm run serve"
-    echo "============================================"
-    echo ""
+  - bash ~/plugins-config/clawpanel/scripts/post_install.sh
 
 # 需要持久化的目录
 volumes:
@@ -77,70 +30,25 @@ volumes:
 
 # 服务配置（Web 服务）
 service:
-  # 常驻服务，使用 Supervisor 管理
   daemon: true
-  # 服务启动后自动启动
   auto_start: true
-  # 服务崩溃后自动重启
   restart: true
-  # 最大重启次数
   max_restarts: 5
-  # 启动命令
-  command: bash -c 'cd $HOME/tools/clawpanel && npm run serve -- --port ${CLAWPANEL_PORT:-1420}'
-  # ⚠️ 注意：daemon 服务使用 supervisorctl stop/start/restart
-  # 不配置 stop_command 和 restart_command
+  command: bash ~/plugins-config/clawpanel/scripts/start.sh
 
 # 健康检查
 healthcheck:
   command: curl -fsS http://localhost:${CLAWPANEL_PORT:-1420} > /dev/null 2>&1
 
-# 卸载命令
+# 卸载命令 - 使用外部脚本文件
 uninstall:
-  - |
-    set +e
+  - bash ~/plugins-config/clawpanel/scripts/uninstall.sh
 
-    log_info "Uninstalling ClawPanel..."
-
-    # 停止进程
-    pkill -f "clawpanel" 2>/dev/null || true
-    pkill -f "node.*serve" 2>/dev/null || true
-
-    # 清理安装目录
-    rm -rf ~/tools/clawpanel 2>/dev/null || true
-
-    rm -rf ~/supervisor/clawpanel.conf 2>/dev/null || true
-    rm -rf ~/supervisor/clawpanel.sh 2>/dev/null || true
-
-    # ⚠️ 保留用户配置（OpenClaw 数据）
-    # rm -rf ~/.openclaw 2>/dev/null || true
-
-    log_success "ClawPanel uninstalled"
-
-# 更新命令
+# 更新命令 - 使用外部脚本文件
 update:
-  - |
-    set +e
+  - bash ~/plugins-config/clawpanel/scripts/update.sh
 
-    log_info "Updating ClawPanel..."
-
-    # 停止当前服务
-    pkill -f "clawpanel" 2>/dev/null || true
-    pkill -f "node.*serve" 2>/dev/null || true
-
-    # Git pull 更新
-    cd ~/tools/clawpanel
-    git pull --rebase
-
-    # 重新安装依赖（需要 devDependencies 中的 vite 进行构建）
-    npm install
-
-    # 重新构建
-    npm run build
-
-    # 验证
-    if [ ! -f ~/tools/clawpanel/package.json ]; then
-      log_error "Update verification failed"
-      exit 1
-    fi
-
-    log_success "ClawPanel updated successfully"
+# 标签
+tags:
+  - web
+  - openclaw

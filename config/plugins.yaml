@@ -82,3 +82,7 @@ plugins:
   # DeerFlow - Super Agent Harness (sub-agents, memory, sandbox, skills)
   - name: deer-flow
     enabled: true
+
+  # GitNexus - Zero-Server Code Intelligence Engine (知识图谱、MCP server、Web UI)
+  - name: gitnexus
+    enabled: true

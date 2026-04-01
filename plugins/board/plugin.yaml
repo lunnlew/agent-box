@@ -1,5 +1,4 @@
 # AgentBox Dashboard 插件定义
-# 提供统一的服务入口面板，显示所有可浏览器访问的服务
 name: board
 version: "1.0.0"
 description: AgentBox Dashboard - 统一服务入口面板，显示所有可浏览器访问的服务
@@ -8,86 +7,42 @@ description: AgentBox Dashboard - 统一服务入口面板，显示所有可浏�
 requires:
   - python3
 
-# 安装命令
+# 安装命令 - 使用外部脚本文件
 install:
-  - |
-    set +e
-
-    log_info "Installing AgentBox Dashboard..."
-
-    # 创建必要目录
-    mkdir -p ~/logs
-
-    log_success "Dashboard installed successfully"
-
-# 安装后配置
-post_install:
-  - |
-    echo ""
-    echo "============================================"
-    echo "  AgentBox Dashboard 安装完成!"
-    echo "============================================"
-    echo ""
-    echo "访问地址：http://localhost:${BOARD_PORT:-8888}"
-    echo "配置目录：~/plugins-config/board/"
-    echo "日志文件：~/logs/board.log"
-    echo "============================================"
-    echo ""
+  - bash ~/plugins-config/board/scripts/install.sh
 
 # 环境变量
 env:
   BOARD_PORT: export BOARD_PORT=${BOARD_PORT:-8888}
+
+# 安装后提示 - 使用外部脚本文件
+post_install:
+  - bash ~/plugins-config/board/scripts/post_install.sh
 
 # 需要持久化的目录
 volumes: []
 
 # 服务配置（Web 面板服务）
 service:
-  # 常驻服务，使用 Supervisor 管理
   daemon: true
-  # 服务启动后自动启动
   auto_start: true
-  # 服务崩溃后自动重启
   restart: true
-  # 最大重启次数
   max_restarts: 3
-  # 启动命令
-  command: /home/agent/plugins-config/board/start-board.sh
-  # ⚠️ 注意：daemon 服务使用 supervisorctl stop/start/restart
-  # 不配置 stop_command 和 restart_command
+  command: bash ~/plugins-config/board/scripts/start.sh
 
 # 健康检查
 healthcheck:
-  command: test -f ~/plugins-config/board/start-board.sh
+  command: test -f ~/plugins-config/board/scripts/start.sh
 
-# 卸载命令
+# 卸载命令 - 使用外部脚本文件
 uninstall:
-  - |
-    set +e
+  - bash ~/plugins-config/board/scripts/uninstall.sh
 
-    log_info "Uninstalling AgentBox Dashboard..."
-
-    # 停止服务进程
-    pkill -f "board-server" 2>/dev/null || true
-    pkill -f "start-board" 2>/dev/null || true
-
-    rm -rf ~/supervisor/board.conf 2>/dev/null || true
-    rm -rf ~/supervisor/board.sh 2>/dev/null || true
-
-    # 清理日志
-    rm -f ~/logs/board.log 2>/dev/null || true
-
-    log_success "Dashboard uninstalled"
-
-# 更新命令
+# 更新命令 - 使用外部脚本文件
 update:
-  - |
-    set +e
+  - bash ~/plugins-config/board/scripts/update.sh
 
-    log_info "Updating AgentBox Dashboard..."
-
-    # 重启服务（如果正在运行）
-    pkill -f "board-server" 2>/dev/null || true
-    sleep 1
-
-    log_success "Dashboard updated successfully"
+# 标签
+tags:
+  - web
+  - dashboard

@@ -9,84 +9,25 @@ requires:
   - curl
   - bash
 
-# 安装命令
+# 安装命令 - 使用外部脚本文件
 install:
-  - |
-    set +e
+  - bash ~/plugins-config/openclaw-manager/scripts/install.sh
 
-    log_info "Installing OpenClaw Manager..."
-
-    # 创建目录
-    mkdir -p ~/tools/appimages/OpenClaw-Manager
-    mkdir -p ~/.openclaw-manager ~/logs
-    rm -rf ~/tools/appimages/OpenClaw-Manager/* 2>/dev/null || true
-
-    # 下载 AppImage
-    log_info "Downloading OpenClaw Manager v0.0.7..."
-    curl -fsSL -o ~/tools/appimages/OpenClaw-Manager/OpenClaw-Manager.AppImage \
-      https://github.com/miaoxworld/openclaw-manager/releases/download/v0.0.7/OpenClaw.Manager_0.0.7_amd64.AppImage
-
-    # 设置权限
-    chmod +x ~/tools/appimages/OpenClaw-Manager/OpenClaw-Manager.AppImage
-
-    # 提取 AppImage（Docker 容器没有 FUSE 支持）
-    log_info "Extracting AppImage..."
-    cd ~/tools/appimages/OpenClaw-Manager && ./OpenClaw-Manager.AppImage --appimage-extract 2>/dev/null || true
-
-    # 修复解压后的权限问题（squashfs 提取后文件属于 root，需要给所有用户权限）
-    log_info "Fixing permissions..."
-    chmod -R 755 ~/tools/appimages/OpenClaw-Manager/squashfs-root 2>/dev/null || true
-    chmod +x ~/tools/appimages/OpenClaw-Manager/squashfs-root/AppRun 2>/dev/null || true
-    if [ -f ~/tools/appimages/OpenClaw-Manager/squashfs-root/AppRun.wrapped ]; then
-      chmod +x ~/tools/appimages/OpenClaw-Manager/squashfs-root/AppRun.wrapped 2>/dev/null || true
-    fi
-
-    # 复制启动脚本到可写目录
-    log_info "Copying startup script..."
-    if [ -f /home/agent/plugins-config/openclaw-manager/start-openclaw-manager.sh ]; then
-      cp /home/agent/plugins-config/openclaw-manager/start-openclaw-manager.sh ~/tools/appimages/OpenClaw-Manager/
-      chmod +x ~/tools/appimages/OpenClaw-Manager/start-openclaw-manager.sh
-      log_info "Startup script copied successfully"
-    else
-      log_warning "Startup script source not found at /home/agent/plugins-config/openclaw-manager/start-openclaw-manager.sh"
-      log_warning "Skipping startup script copy (service may fail to start)"
-    fi
-
-    # 验证安装
-    if [ ! -f ~/tools/appimages/OpenClaw-Manager/squashfs-root/AppRun ]; then
-      log_error "Installation failed: AppRun not found (AppImage extraction may have failed)"
-      log_info "Please check network connection and retry: agentbox install openclaw-manager --force"
-      # ⚠️ 不 exit，让脚本继续执行，至少保留已复制的启动脚本
-    else
-      log_success "OpenClaw Manager installed successfully"
-    fi
-
-# 环境变量
+# 环境变量配置
 env:
   OPENCLAW_MANAGER_NOVNC_PORT: export OPENCLAW_MANAGER_NOVNC_PORT=${OPENCLAW_MANAGER_NOVNC_PORT:-6081}
   OPENCLAW_MANAGER_VNC_PORT: export OPENCLAW_MANAGER_VNC_PORT=${OPENCLAW_MANAGER_VNC_PORT:-5901}
-
-# 安装后配置
-post_install:
-  - |
-    echo ""
-    echo "============================================"
-    echo "  OpenClaw Manager 安装完成!"
-    echo "============================================"
-    echo ""
-    echo "访问地址：http://localhost:${OPENCLAW_MANAGER_NOVNC_PORT:-6081}/vnc.html (独立 noVNC 实例)"
-    echo "安装目录：~/tools/appimages/OpenClaw-Manager"
-    echo "配置目录：~/.openclaw-manager"
-    echo ""
-    echo "注意：使用独立 Xvfb 显示环境 (:100)"
-    echo "============================================"
-    echo ""
+  OPENCLAW_MANAGER_VERSION: export OPENCLAW_MANAGER_VERSION=${OPENCLAW_MANAGER_VERSION:-0.0.7}
 
 # 需要持久化的目录
 volumes:
   - ~/.openclaw
   - ~/.openclaw-manager
   - ~/tools/appimages/OpenClaw-Manager
+
+# 健康检查
+healthcheck:
+  command: test -f ~/tools/appimages/OpenClaw-Manager/squashfs-root/AppRun
 
 # 服务配置（GUI 应用服务）
 service:
@@ -99,84 +40,32 @@ service:
   # 最大重启次数
   max_restarts: 5
   # 启动命令
-  command: /home/agent/tools/appimages/OpenClaw-Manager/start-openclaw-manager.sh
+  command: bash ~/plugins-config/openclaw-manager/scripts/start.sh
+  # 停止命令
+  stop_command: bash ~/plugins-config/openclaw-manager/scripts/stop.sh
+  # 重启命令
+  restart_command: bash ~/plugins-config/openclaw-manager/scripts/restart.sh
 
-# 健康检查
-healthcheck:
-  command: test -f ~/tools/appimages/OpenClaw-Manager/squashfs-root/AppRun
-
-# 卸载命令
+# 卸载命令 - 使用外部脚本文件
 uninstall:
-  - |
-    set +e
+  - bash ~/plugins-config/openclaw-manager/scripts/uninstall.sh
 
-    log_info "Uninstalling OpenClaw Manager..."
-
-    # 停止进程
-    pkill -f "OpenClaw-Manager" 2>/dev/null || true
-    pkill -f "x11vnc.*5901" 2>/dev/null || true
-    pkill -f "websockify.*6081" 2>/dev/null || true
-
-    rm -rf ~/supervisor/openclaw-manager.conf 2>/dev/null || true
-    rm -rf ~/supervisor/openclaw-manager.sh 2>/dev/null || true
-
-    # 清理安装目录
-    rm -rf ~/tools/appimages/OpenClaw-Manager 2>/dev/null || true
-
-    # ⚠️ 保留用户配置
-    # rm -rf ~/.openclaw-manager 2>/dev/null || true
-
-    log_success "OpenClaw Manager uninstalled"
-
-# 更新命令
+# 更新命令 - 使用外部脚本文件
 update:
-  - |
-    set +e
+  - bash ~/plugins-config/openclaw-manager/scripts/update.sh
 
-    log_info "Updating OpenClaw Manager..."
+# 安装后提示 - 使用外部脚本文件
+post_install:
+  - bash ~/plugins-config/openclaw-manager/scripts/post_install.sh
 
-    # 停止当前服务
-    pkill -f "OpenClaw-Manager" 2>/dev/null || true
-    pkill -f "x11vnc.*5901" 2>/dev/null || true
-    pkill -f "websockify.*6081" 2>/dev/null || true
+# 服务端口信息
+ports:
+  - 6081: OpenClaw Manager noVNC (独立实例)
+  - 5901: OpenClaw Manager VNC (独立实例)
 
-    # 清理旧版本
-    rm -rf ~/tools/appimages/OpenClaw-Manager 2>/dev/null || true
-
-    # 重新安装
-    mkdir -p ~/tools/appimages/OpenClaw-Manager
-
-    log_info "Downloading OpenClaw Manager v0.0.7..."
-    curl -fsSL -o ~/tools/appimages/OpenClaw-Manager/OpenClaw-Manager.AppImage \
-      https://github.com/miaoxworld/openclaw-manager/releases/download/v0.0.7/OpenClaw.Manager_0.0.7_amd64.AppImage
-
-    chmod +x ~/tools/appimages/OpenClaw-Manager/OpenClaw-Manager.AppImage
-
-    log_info "Extracting AppImage..."
-    cd ~/tools/appimages/OpenClaw-Manager && ./OpenClaw-Manager.AppImage --appimage-extract 2>/dev/null || true
-
-    # 修复解压后的权限问题
-    log_info "Fixing permissions..."
-    chmod -R 755 ~/tools/appimages/OpenClaw-Manager/squashfs-root 2>/dev/null || true
-    chmod +x ~/tools/appimages/OpenClaw-Manager/squashfs-root/AppRun 2>/dev/null || true
-    if [ -f ~/tools/appimages/OpenClaw-Manager/squashfs-root/AppRun.wrapped ]; then
-      chmod +x ~/tools/appimages/OpenClaw-Manager/squashfs-root/AppRun.wrapped 2>/dev/null || true
-    fi
-
-    # 复制启动脚本到可写目录
-    log_info "Copying startup script..."
-    if [ -f /home/agent/plugins-config/openclaw-manager/start-openclaw-manager.sh ]; then
-      cp /home/agent/plugins-config/openclaw-manager/start-openclaw-manager.sh ~/tools/appimages/OpenClaw-Manager/
-      chmod +x ~/tools/appimages/OpenClaw-Manager/start-openclaw-manager.sh
-      log_info "Startup script copied successfully"
-    else
-      log_warning "Startup script source not found"
-    fi
-
-    # 验证
-    if [ ! -f ~/tools/appimages/OpenClaw-Manager/squashfs-root/AppRun ]; then
-      log_error "Update verification failed: AppRun not found"
-      log_info "Please retry: agentbox install openclaw-manager --force"
-    else
-      log_success "OpenClaw Manager updated successfully"
-    fi
+# 标签
+tags:
+  - gui
+  - novnc
+  - openclaw
+  - appimage

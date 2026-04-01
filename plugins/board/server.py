@@ -210,6 +210,29 @@ SERVICES = {
         'badge': 'new',
         'category': 'ai',
         'check_host': 'host.docker.internal'
+    },
+    'gitnexus': {
+        'internal_port': 4747,
+        'external_port': int(os.environ.get('GITNEXUS_PORT', 4747)),
+        'name': 'GitNexus Bridge',
+        'icon': '🔗',
+        'desc': 'GitNexus Bridge Server - 连接本地索引，供 Web UI 和 MCP 使用',
+        'path': '',
+        'color': 'indigo',
+        'category': 'tools',
+        'check_host': 'host.docker.internal'
+    },
+    'gitnexus-web': {
+        'internal_port': 5173,
+        'external_port': int(os.environ.get('GITNEXUS_WEB_PORT', 5173)),
+        'name': 'GitNexus Web UI',
+        'icon': '🕸️',
+        'desc': 'GitNexus 代码知识图谱探索器 - 可视化代码结构和依赖关系',
+        'path': '',
+        'color': 'purple',
+        'badge': 'new',
+        'category': 'tools',
+        'check_host': 'host.docker.internal'
     }
 }
 

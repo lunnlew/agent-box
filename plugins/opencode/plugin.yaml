@@ -8,77 +8,18 @@ requires:
   - nodejs >= 18
   - npm
 
-# 安装命令
+# 安装命令 - 使用外部脚本文件
 install:
-  - |
-    set +e
-
-    PKG_NAME="opencode-ai"
-    NPM_ROOT=$(npm root -g 2>/dev/null)
-    PKG_PATH="$NPM_ROOT/opencode-ai"
-    # npm 10.x 不支持 bin -g，使用 prefix + /bin 替代
-    NPM_PREFIX=$(npm prefix -g 2>/dev/null)
-    PKG_BIN="$NPM_PREFIX/bin/opencode"
-
-    log_info "NPM root: $NPM_ROOT"
-    log_info "NPM prefix: $NPM_PREFIX"
-    log_info "Installing OpenCode AI..."
-
-    # 清理旧版本
-    log_info "Cleaning up existing installation..."
-    npm uninstall -g "$PKG_NAME" 2>/dev/null || true
-    [ -d "$PKG_PATH" ] && rm -rf "$PKG_PATH" 2>/dev/null || true
-    [ -L "$PKG_BIN" ] && rm -f "$PKG_BIN" 2>/dev/null || true
-    [ -f "$PKG_BIN" ] && rm -f "$PKG_BIN" 2>/dev/null || true
-
-    # 清理临时目录
-    for tmp_dir in "$NPM_ROOT"/.opencode-*; do
-      [ -d "$tmp_dir" ] && rm -rf "$tmp_dir" 2>/dev/null || true
-    done
-
-    # 安装
-    log_info "Installing package..."
-    if ! npm install -g "$PKG_NAME"; then
-      log_warning "First attempt failed, retrying..."
-      sleep 2
-      npm install -g "$PKG_NAME"
-    fi
-
-    # 验证安装
-    log_info "Verifying installation..."
-    if [ ! -f "$PKG_PATH/package.json" ]; then
-      log_error "Installation incomplete: package.json missing"
-      exit 1
-    fi
-
-    # 检查二进制文件或符号链接是否存在
-    if [ ! -L "$PKG_BIN" ] && [ ! -f "$PKG_BIN" ]; then
-      log_error "Installation incomplete: binary not found at $PKG_BIN"
-      # 尝试备用路径
-      if [ -L "$HOME/tools/bin/opencode" ] || [ -f "$HOME/tools/bin/opencode" ]; then
-        log_info "Binary found at $HOME/tools/bin/opencode, creating symlink..."
-        mkdir -p "$(dirname "$PKG_BIN")"
-        ln -sf "$HOME/tools/bin/opencode" "$PKG_BIN" 2>/dev/null || true
-      else
-        log_error "Binary also not found at $HOME/tools/bin/opencode"
-        log_info "Available binaries in $HOME/tools/bin:"
-        ls -la "$HOME/tools/bin/" 2>/dev/null | grep -i opencode || echo "(none)"
-        exit 1
-      fi
-    fi
-
-    # 最终清理
-    for tmp_dir in "$NPM_ROOT"/.opencode-*; do
-      [ -d "$tmp_dir" ] && rm -rf "$tmp_dir" 2>/dev/null || true
-    done
-
-    opencode --version
-    log_success "OpenCode AI installed successfully"
+  - bash ~/plugins-config/opencode/scripts/install.sh
 
 # 环境变量配置
 env:
   OPENAI_API_KEY: optional
   ANTHROPIC_API_KEY: optional
+
+# 安装后提示 - 使用外部脚本文件
+post_install:
+  - bash ~/plugins-config/opencode/scripts/post_install.sh
 
 # 需要持久化的目录
 volumes:
@@ -88,70 +29,16 @@ volumes:
 healthcheck:
   command: opencode --version
 
-# 卸载命令
+# 卸载命令 - 使用外部脚本文件
 uninstall:
-  - |
-    set +e
+  - bash ~/plugins-config/opencode/scripts/uninstall.sh
 
-    PKG_NAME="opencode-ai"
-    PKG_PATH="$(npm root -g 2>/dev/null)/opencode-ai"
-    # npm 10.x 不支持 bin -g，使用 prefix + /bin 替代
-    NPM_PREFIX=$(npm prefix -g 2>/dev/null)
-    PKG_BIN="$NPM_PREFIX/bin/opencode"
-
-    log_info "Uninstalling OpenCode AI..."
-
-    # npm 卸载
-    npm uninstall -g "$PKG_NAME" 2>/dev/null || true
-
-    # 清理残留目录
-    [ -d "$PKG_PATH" ] && rm -rf "$PKG_PATH" 2>/dev/null || true
-    [ -L "$PKG_BIN" ] && rm -f "$PKG_BIN" 2>/dev/null || true
-    [ -f "$PKG_BIN" ] && rm -f "$PKG_BIN" 2>/dev/null || true
-
-    # 清理临时目录
-    for tmp_dir in "$(npm root -g 2>/dev/null)"/.opencode-*; do
-      [ -d "$tmp_dir" ] && rm -rf "$tmp_dir" 2>/dev/null || true
-    done
-
-    # 可选：保留用户配置
-    # rm -rf ~/.opencode 2>/dev/null || true
-
-    log_success "OpenCode AI uninstalled"
-
-# 更新命令
+# 更新命令 - 使用外部脚本文件
 update:
-  - |
-    set +e
+  - bash ~/plugins-config/opencode/scripts/update.sh
 
-    PKG_NAME="opencode-ai"
-    PKG_PATH="$(npm root -g 2>/dev/null)/opencode-ai"
-
-    log_info "Updating OpenCode AI..."
-
-    # 备份用户配置
-    if [ -d ~/.opencode ]; then
-      cp -r ~/.opencode ~/.opencode.bak.$(date +%Y%m%d%H%M%S) 2>/dev/null || true
-    fi
-
-    # 更新
-    npm update -g "$PKG_NAME" || {
-      log_warning "Update failed, reinstalling..."
-      npm install -g "$PKG_NAME"@latest
-    }
-
-    # 验证
-    if [ ! -f "$PKG_PATH/package.json" ]; then
-      log_error "Update verification failed"
-      # 恢复备份
-      if [ -d ~/.opencode.bak.* ]; then
-        mv ~/.opencode.bak.* ~/.opencode 2>/dev/null || true
-      fi
-      exit 1
-    fi
-
-    opencode --version
-    log_success "OpenCode AI updated successfully"
-
-    # 清理备份
-    rm -rf ~/.opencode.bak.* 2>/dev/null || true
+# 标签
+tags:
+  - cli
+  - ai
+  - coding-assistant

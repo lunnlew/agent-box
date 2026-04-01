@@ -1,0 +1,67 @@
+# GitNexus 插件定义
+name: gitnexus
+version: "1.7.0"
+description: GitNexus - Zero-Server Code Intelligence Engine，包含 CLI、MCP Server 和 Web UI（Docker 容器运行）
+
+# 依赖要求
+requires:
+  - docker
+  - bash
+
+# 安装命令 - 使用外部脚本文件
+install:
+  - bash ~/plugins-config/gitnexus/scripts/install.sh
+
+# 环境变量配置
+env:
+  GITNEXUS_PORT: export GITNEXUS_PORT=${GITNEXUS_PORT:-4747}
+  GITNEXUS_WEB_PORT: export GITNEXUS_WEB_PORT=${GITNEXUS_WEB_PORT:-5173}
+  NPM_REGISTRY: export NPM_REGISTRY=${NPM_REGISTRY:-https://registry.npmmirror.com}
+  # 额外挂载的仓库路径（逗号分隔，格式：host_path[:name]）
+  # 例如：D:/projects/my-repo:my-project,D:/work/another-repo
+  GITNEXUS_REPOS: export GITNEXUS_REPOS=${GITNEXUS_REPOS:-}
+  # 是否自动索引挂载的仓库（true/false）
+  GITNEXUS_AUTO_INDEX: export GITNEXUS_AUTO_INDEX=${GITNEXUS_AUTO_INDEX:-false}
+
+# 需要持久化的目录
+volumes:
+  - ~/.gitnexus
+  - ~/gitnexus-src
+
+# 健康检查
+healthcheck:
+  command: docker ps --filter name=gitnexus-bridge --filter status=running -q | grep -q .
+
+# 服务配置 - 使用 Docker 容器运行
+service:
+  daemon: false
+  auto_start: true
+  command: bash ~/plugins-config/gitnexus/scripts/start.sh
+  stop_command: bash ~/plugins-config/gitnexus/scripts/stop.sh
+  restart_command: bash ~/plugins-config/gitnexus/scripts/restart.sh
+
+# 卸载命令 - 使用外部脚本文件
+uninstall:
+  - bash ~/plugins-config/gitnexus/scripts/uninstall.sh
+
+# 更新命令 - 使用外部脚本文件
+update:
+  - bash ~/plugins-config/gitnexus/scripts/update.sh
+
+# 安装后提示 - 使用外部脚本文件
+post_install:
+  - bash ~/plugins-config/gitnexus/scripts/post_install.sh
+
+# 服务端口信息
+ports:
+  - 4747: GitNexus Bridge Server (Docker)
+  - 5173: GitNexus Web UI (Docker)
+
+# 标签
+tags:
+  - code-intelligence
+  - knowledge-graph
+  - mcp
+  - web-ui
+  - ai-agent
+  - docker
