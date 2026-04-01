@@ -86,3 +86,7 @@ plugins:
   # GitNexus - Zero-Server Code Intelligence Engine (知识图谱、MCP server、Web UI)
   - name: gitnexus
     enabled: true
+
+  # OpenSpace - AI Agent 自我进化引擎（技能自动学习、云社区、Dashboard）
+  - name: openspace
+    enabled: true

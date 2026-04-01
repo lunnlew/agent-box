@@ -233,6 +233,29 @@ SERVICES = {
         'badge': 'new',
         'category': 'tools',
         'check_host': 'host.docker.internal'
+    },
+    'openspace-dashboard': {
+        'internal_port': 7788,
+        'external_port': int(os.environ.get('OPENSPACE_PORT', 7788)),
+        'name': 'OpenSpace Dashboard',
+        'icon': '🧬',
+        'desc': 'OpenSpace 技能进化可视化面板 - 查看技能历史、版本 lineage、执行指标',
+        'path': '',
+        'color': 'cyan',
+        'badge': 'new',
+        'category': 'ai',
+        'check_host': '127.0.0.1'
+    },
+    'openspace-web': {
+        'internal_port': 5174,
+        'external_port': int(os.environ.get('OPENSPACE_FRONTEND_PORT', 5174)),
+        'name': 'OpenSpace Web UI',
+        'icon': '✨',
+        'desc': 'OpenSpace 技能进化前端界面 - 技能浏览、搜索、版本对比',
+        'path': '',
+        'color': 'purple',
+        'category': 'ai',
+        'check_host': '127.0.0.1'
     }
 }
 
@@ -299,6 +322,23 @@ CLI_TOOLS = {
         'desc': 'Docker 容器管理工具，需在终端使用 docker 命令行操作',
         'command': 'docker',
         'color': 'orange',
+        'category': 'cli'
+    },
+    'openspace': {
+        'name': 'OpenSpace CLI',
+        'icon': '🧬',
+        'desc': 'AI Agent 自我进化引擎 - 技能自动学习、任务执行、云社区',
+        'command': 'openspace',
+        'color': 'cyan',
+        'badge': 'new',
+        'category': 'cli'
+    },
+    'openspace-mcp': {
+        'name': 'OpenSpace MCP',
+        'icon': '🔗',
+        'desc': 'OpenSpace MCP Server - 供其他 Agent（Claude Code、Codex）调用',
+        'command': 'openspace-mcp',
+        'color': 'purple',
         'category': 'cli'
     }
 }

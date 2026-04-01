@@ -764,7 +764,7 @@ set_mirror() {
 # 批量操作
 # ===========================================
 
-# 安装所有已启用的插件（容错模式）
+# 安装所有已启用的插件（并行安装 + 依赖感知）
 install_all_plugins() {
     local force_install="${1:-false}"
     log_info "Installing all enabled plugins..."
@@ -782,37 +782,84 @@ install_all_plugins() {
     fi
 
     log_info "Found enabled plugins: $(echo $enabled_plugins | tr '\n' ' ')"
-    
-    # 计算总数
-    local total=$(echo "$enabled_plugins" | wc -l)
-    local current=0
+
+    # 按依赖层级分组安装
+    log_info "Analyzing dependency layers for installation..."
+    local layers=$(get_dependency_layers "$enabled_plugins")
+
+    local total_installed=0
+    local total_failed=0
     local failed_plugins=()
-    local success_count=0
-    local fail_count=0
 
-    while IFS= read -r plugin_name; do
-        if [ -n "$plugin_name" ]; then
-            ((current++))
-            log_info "Installing plugin: $plugin_name ($current/$total)"
-            if install_plugin "$plugin_name" "$force_install"; then
-                ((success_count++))
-            else
-                ((fail_count++))
-                failed_plugins+=("$plugin_name")
-                log_warning "Failed to install: $plugin_name"
+    # 逐层安装（层内并行，层间串行）
+    local layer_num=0
+    while IFS= read -r layer; do
+        [ -z "$layer" ] && continue
+        ((layer_num++))
+
+        log_info "Installing Layer $layer_num: $layer"
+
+        local layer_plugins=($layer)
+        local temp_results=$(mktemp -d)
+
+        # 并行安装当前层的插件
+        for plugin_name in "${layer_plugins[@]}"; do
+            [ -z "$plugin_name" ] && continue
+
+            # 后台安装每个插件
+            (
+                local result_file="$temp_results/$plugin_name"
+                local log_file="$temp_results/${plugin_name}.log"
+
+                if install_plugin "$plugin_name" "$force_install" > "$log_file" 2>&1; then
+                    echo "success" > "$result_file"
+                else
+                    echo "failed" > "$result_file"
+                fi
+            ) &
+            log_info "  Started: $plugin_name (PID: $!)"
+        done
+
+        # 等待当前层所有安装完成
+        log_info "  Waiting for layer $layer_num installations..."
+        wait
+
+        # 统计结果
+        for plugin_name in "${layer_plugins[@]}"; do
+            [ -z "$plugin_name" ] && continue
+            local result_file="$temp_results/$plugin_name"
+            local log_file="$temp_results/${plugin_name}.log"
+
+            if [ -f "$result_file" ]; then
+                if [ "$(cat "$result_file")" = "success" ]; then
+                    ((total_installed++))
+                    log_success "  Installed: $plugin_name"
+                else
+                    ((total_failed++))
+                    failed_plugins+=("$plugin_name")
+                    log_error "  Failed: $plugin_name"
+                    # 显示最后几行日志
+                    if [ -f "$log_file" ]; then
+                        tail -3 "$log_file" | sed 's/^/    /'
+                    fi
+                fi
             fi
-        fi
-    done <<< "$enabled_plugins"
+        done
 
-    log_info "Installation summary: $success_count succeeded, $fail_count failed"
-    
+        # 清理临时文件
+        rm -rf "$temp_results"
+
+    done <<< "$layers"
+
+    log_info "Installation summary: $total_installed installed, $total_failed failed"
+
     if [ ${#failed_plugins[@]} -gt 0 ]; then
         log_warning "Failed plugins: ${failed_plugins[*]}"
-        log_info "You can retry failed plugins individually with: agentbox install <plugin-name>"
+        log_info "Retry with: agentbox install <plugin-name>"
     fi
 
     log_success "Plugin installation completed"
-    return 0  # 总是返回成功，避免容器重启
+    return 0
 }
 
 # 恢复所有已安装插件的卷
@@ -924,13 +971,14 @@ start_plugin_service() {
         local config_exists=false
         [ -f "$conf_file" ] && config_exists=true
 
-        # 如果配置已存在且服务正在运行，跳过重新配置
+        # 如果配置已存在且服务正在运行/启动中，跳过
         if [ "$config_exists" = "true" ] && [ "$is_daemon" = "true" ]; then
             local svc_status=$(supervisorctl -c "$SUPERVISOR_CONF" status "$plugin_name" 2>/dev/null || echo "")
             local svc_state=$(echo "$svc_status" | awk '{print $2}')
 
-            if [ "$svc_state" = "RUNNING" ]; then
-                log_info "Service $plugin_name already running (skip)"
+            # RUNNING 或 STARTING 都跳过
+            if [ "$svc_state" = "RUNNING" ] || [ "$svc_state" = "STARTING" ]; then
+                log_info "Service $plugin_name already $svc_state (skip)"
                 return 0
             fi
         fi
@@ -938,40 +986,70 @@ start_plugin_service() {
         # 启动前清理旧进程（防止孤儿进程）
         log_info "Cleaning up orphan processes for $plugin_name..."
 
-        # 1. 从 service_cmd 中提取第一个命令/进程名用于清理
+        # 1. 从 service_cmd 中提取进程名用于清理
         local proc_name=""
+        local is_script_service=false
+
         # 处理 bash -c '...' 或 sh -c '...' 的情况，提取内部命令
         if [[ "$service_cmd" =~ (bash|sh|/bin/bash|/bin/sh)[[:space:]]+-c[[:space:]]+[\'\"](.*)[\'\"] ]]; then
-            # 从内部命令中提取第一个单词作为进程名
             local inner_cmd="${BASH_REMATCH[2]}"
             proc_name=$(echo "$inner_cmd" | awk '{print $1}' | xargs basename 2>/dev/null || echo "$inner_cmd" | awk '{print $1}')
         else
             proc_name=$(echo "$service_cmd" | awk '{print $1}' | xargs basename 2>/dev/null || echo "$service_cmd" | awk '{print $1}')
         fi
 
-        # 清理同名进程（使用精确匹配，避免误杀）
-        if [ -n "$proc_name" ] && [ "$proc_name" != "" ]; then
-            # 匹配规则：进程名后必须跟空格/参数或是行尾，且前面必须是路径分隔符或空格
-            # 这样 openclaw 只会匹配 openclaw 和 /path/to/openclaw，不会匹配 openclaw-gateway
-            local proc_pids=$(pgrep -f "(^|[[:space:]/])${proc_name}([[:space:]]|$)" 2>/dev/null || true)
-            if [ -n "$proc_pids" ]; then
-                # 二次过滤：检查实际的进程名，确保精确匹配
-                local filtered_pids=""
-                for pid in $proc_pids; do
-                    local cmd=$(ps -o comm= -p "$pid" 2>/dev/null || echo "")
-                    local base_cmd=$(basename "$cmd" 2>/dev/null || echo "")
-                    if [ "$base_cmd" = "$proc_name" ]; then
-                        filtered_pids="$filtered_pids $pid"
-                    fi
-                done
-
-                if [ -n "$filtered_pids" ]; then
-                    log_info "  Killing $proc_name processes:$filtered_pids"
-                    for pid in $filtered_pids; do
-                        pkill -9 -P "$pid" 2>/dev/null || true
+        # 检查是否是脚本类型服务（bash/sh 执行脚本文件）
+        if [[ "$proc_name" == "bash" ]] || [[ "$proc_name" == "sh" ]] || [[ "$proc_name" == "/bin/bash" ]] || [[ "$proc_name" == "/bin/sh" ]]; then
+            is_script_service=true
+            # 对于脚本服务，提取脚本路径作为精确匹配
+            local script_path=$(echo "$service_cmd" | awk '{print $2}' 2>/dev/null || true)
+            if [ -n "$script_path" ]; then
+                # 使用脚本路径匹配（更精确）
+                local script_pids=$(pgrep -f "$script_path" 2>/dev/null || true)
+                if [ -n "$script_pids" ]; then
+                    log_info "  Killing script processes ($script_path):$script_pids"
+                    for pid in $script_pids; do
                         kill -9 "$pid" 2>/dev/null || true
                     done
-                    sleep 2
+                    sleep 1
+                fi
+            fi
+        fi
+
+        # 清理同名进程（仅对非 shell 进程，避免误杀所有 bash 进程）
+        if [ "$is_script_service" = "false" ] && [ -n "$proc_name" ] && [ "$proc_name" != "" ]; then
+            # 排除通用 shell 名称，避免误杀
+            local shell_names="bash sh zsh fish dash ksh tcsh csh"
+            local is_shell=false
+            for shell in $shell_names; do
+                if [ "$proc_name" = "$shell" ]; then
+                    is_shell=true
+                    break
+                fi
+            done
+
+            if [ "$is_shell" = "false" ]; then
+                # 匹配规则：进程名后必须跟空格/参数或是行尾
+                local proc_pids=$(pgrep -f "(^|[[:space:]/])${proc_name}([[:space:]]|$)" 2>/dev/null || true)
+                if [ -n "$proc_pids" ]; then
+                    # 二次过滤：检查实际的进程名，确保精确匹配
+                    local filtered_pids=""
+                    for pid in $proc_pids; do
+                        local cmd=$(ps -o comm= -p "$pid" 2>/dev/null || echo "")
+                        local base_cmd=$(basename "$cmd" 2>/dev/null || echo "")
+                        if [ "$base_cmd" = "$proc_name" ]; then
+                            filtered_pids="$filtered_pids $pid"
+                        fi
+                    done
+
+                    if [ -n "$filtered_pids" ]; then
+                        log_info "  Killing $proc_name processes:$filtered_pids"
+                        for pid in $filtered_pids; do
+                            pkill -9 -P "$pid" 2>/dev/null || true
+                            kill -9 "$pid" 2>/dev/null || true
+                        done
+                        sleep 1
+                    fi
                 fi
             fi
         fi
@@ -1061,13 +1139,39 @@ start_plugin_service() {
                 return 1
             fi
 
-            log_info "Starting service for $plugin_name (Supervisor mode)"
-
             local conf_file="$HOME/supervisor/${plugin_name}.conf"
             local log_file="$HOME/logs/${plugin_name}.log"
             local stderr_log="$HOME/logs/${plugin_name}_error.log"
 
             mkdir -p "$HOME/supervisor" "$HOME/logs"
+
+            # 检查配置是否已存在
+            if [ -f "$conf_file" ]; then
+                # 配置已存在，只需启动服务
+                local current_status=$(supervisorctl -c "$SUPERVISOR_CONF" status "$plugin_name" 2>/dev/null | awk '{print $2}')
+
+                case "$current_status" in
+                    "RUNNING"|"STARTING")
+                        log_success "Service $plugin_name already $current_status"
+                        return 0
+                        ;;
+                    "STOPPED"|"EXITED"|"FATAL"|"BACKOFF")
+                        log_info "Starting existing service: $plugin_name"
+                        supervisorctl -c "$SUPERVISOR_CONF" start "$plugin_name" > /dev/null 2>&1
+                        sleep 2
+                        local new_status=$(supervisorctl -c "$SUPERVISOR_CONF" status "$plugin_name" 2>/dev/null | awk '{print $2}')
+                        if [ "$new_status" = "RUNNING" ] || [ "$new_status" = "STARTING" ]; then
+                            log_success "Service started: $plugin_name"
+                        else
+                            log_error "Failed to start: $plugin_name ($new_status)"
+                        fi
+                        return 0
+                        ;;
+                esac
+            fi
+
+            # 配置不存在，创建新配置
+            log_info "Creating service for $plugin_name (Supervisor mode)"
 
             local autorestart="true"
             case "$restart_policy" in
@@ -1096,7 +1200,7 @@ SCRIPT_HEADER
 command=$actual_cmd
 directory=$HOME
 user=agent
-autostart=true
+autostart=false
 autorestart=${autorestart}
 startretries=3
 startsecs=2
@@ -1115,7 +1219,10 @@ EOF
             supervisorctl -c "$SUPERVISOR_CONF" reread 2>/dev/null || true
             supervisorctl -c "$SUPERVISOR_CONF" update 2>/dev/null || true
 
-            sleep 1
+            # 显式启动服务
+            supervisorctl -c "$SUPERVISOR_CONF" start "$plugin_name" > /dev/null 2>&1
+
+            sleep 2
 
             # 对于执行完就退出的脚本（如 Docker 容器启动检查），status 会是 EXITED 而不是 RUNNING
             # 这是正常的，只要日志中没有错误信息就认为启动成功
@@ -1501,7 +1608,7 @@ service_status() {
     fi
 }
 
-# 启动所有已启用插件的服务（容错模式 + 拓扑排序）
+# 启动所有已启用插件的服务（并行启动 + 拓扑排序）
 start_all_services() {
     log_info "Starting plugin services..."
 
@@ -1518,60 +1625,97 @@ start_all_services() {
         return 0
     fi
 
-    # 拓扑排序：确保依赖先启动
-    log_info "Sorting plugins by dependencies..."
-    local sorted_plugins=$(topological_sort_plugins "$enabled_plugins")
-    
-    log_info "Starting services in order: $sorted_plugins"
-    
+    # 按依赖层级分组（同一层可并行启动）
+    log_info "Analyzing dependency layers..."
+    local layers=$(get_dependency_layers "$enabled_plugins")
+
+    local total_started=0
+    local total_failed=0
     local failed_services=()
-    local success_count=0
-    local fail_count=0
 
-    # 启动服务（容错模式）
-    for plugin_name in $sorted_plugins; do
-        if [ -n "$plugin_name" ]; then
-            log_info "Starting service: $plugin_name"
-            if start_plugin_service "$plugin_name"; then
-                ((success_count++))
-            else
-                ((fail_count++))
-                failed_services+=("$plugin_name")
-                log_warning "Failed to start service: $plugin_name"
-                # 继续启动其他服务，不因单个失败而停止
-            fi
+    # 逐层启动（层内并行，层间串行）
+    local layer_num=0
+    while IFS= read -r layer; do
+        [ -z "$layer" ] && continue
+        ((layer_num++))
+
+        log_info "Layer $layer_num: $layer"
+
+        # 并行启动当前层的服务
+        local pids=""
+        local layer_plugins=($layer)
+        local temp_results=$(mktemp -d)
+
+        for plugin_name in "${layer_plugins[@]}"; do
+            [ -z "$plugin_name" ] && continue
+
+            # 后台启动每个服务
+            (
+                local result_file="$temp_results/$plugin_name"
+                if start_plugin_service "$plugin_name"; then
+                    echo "success" > "$result_file"
+                else
+                    echo "failed" > "$result_file"
+                fi
+            ) &
+            pids="$pids $!"
+        done
+
+        # 等待当前层所有服务启动完成
+        if [ -n "$pids" ]; then
+            log_info "  Waiting for layer $layer_num services to start..."
+            wait $pids 2>/dev/null || true
         fi
-    done
 
-    log_info "Service startup summary: $success_count succeeded, $fail_count failed"
-    
+        # 统计结果
+        for plugin_name in "${layer_plugins[@]}"; do
+            [ -z "$plugin_name" ] && continue
+            local result_file="$temp_results/$plugin_name"
+            if [ -f "$result_file" ]; then
+                if [ "$(cat "$result_file")" = "success" ]; then
+                    ((total_started++))
+                else
+                    ((total_failed++))
+                    failed_services+=("$plugin_name")
+                    log_warning "  Failed: $plugin_name"
+                fi
+            fi
+        done
+
+        # 清理临时文件
+        rm -rf "$temp_results"
+
+    done <<< "$layers"
+
+    log_info "Service startup summary: $total_started started, $total_failed failed"
+
     if [ ${#failed_services[@]} -gt 0 ]; then
         log_warning "Failed services: ${failed_services[*]}"
-        log_info "You can retry failed services individually with: agentbox start <plugin-name>"
+        log_info "Retry with: agentbox start <plugin-name>"
     fi
 
     log_success "Service startup completed"
-    return 0  # 总是返回成功，避免容器重启
+    return 0
 }
 
-# 拓扑排序插件依赖
+# 获取依赖层级（同一层可并行启动）
 # 输入：插件列表（空格分隔）
-# 输出：排序后的插件列表（依赖在前）
-topological_sort_plugins() {
+# 输出：每行一层，每层包含可并行启动的插件
+get_dependency_layers() {
     local plugins="$1"
-    
+
     # 使用关联数组存储依赖关系
-    declare -A deps_map
-    declare -A in_degree
-    declare -a result
-    declare -a queue
-    
+    declare -A deps_map      # plugin -> 依赖列表
+    declare -A in_degree     # plugin -> 入度
+    declare -A processed     # plugin -> 是否已处理
+
     # 初始化
     for plugin in $plugins; do
         in_degree[$plugin]=0
         deps_map[$plugin]=""
+        processed[$plugin]=false
     done
-    
+
     # 构建依赖图
     for plugin in $plugins; do
         local plugin_file="$PLUGINS_DEF_DIR/$plugin/plugin.yaml"
@@ -1579,43 +1723,60 @@ topological_sort_plugins() {
             local plugin_deps=$(sed -n '/^depends:/,/^[a-z]/p' "$plugin_file" 2>/dev/null | grep -E '^\s+-' | sed 's/^\s*- //' | tr '\n' ' ')
             for dep in $plugin_deps; do
                 if [ -n "$dep" ] && [[ " $plugins " == *" $dep "* ]]; then
-                    # dep → plugin (dep 必须在 plugin 之前)
+                    # dep -> plugin (dep 必须在 plugin 之前)
                     deps_map[$dep]="${deps_map[$dep]} $plugin"
                     ((in_degree[$plugin]++))
                 fi
             done
         fi
     done
-    
-    # 将所有入度为 0 的节点加入队列
-    for plugin in $plugins; do
-        if [ "${in_degree[$plugin]}" -eq 0 ]; then
-            queue+=("$plugin")
-        fi
-    done
-    
-    # Kahn 算法
-    while [ ${#queue[@]} -gt 0 ]; do
-        local current="${queue[0]}"
-        queue=("${queue[@]:1}")
-        result+=("$current")
-        
-        # 减少相邻节点的入度
-        for neighbor in ${deps_map[$current]}; do
-            ((in_degree[$neighbor]--))
-            if [ "${in_degree[$neighbor]}" -eq 0 ]; then
-                queue+=("$neighbor")
+
+    # 按层输出（BFS）
+    local remaining="$plugins"
+    while [ -n "$(echo "$remaining" | tr -d ' ')" ]; do
+        local current_layer=""
+
+        # 找出当前层（入度为 0 且未处理）
+        for plugin in $remaining; do
+            [ -z "$plugin" ] && continue
+            if [ "${in_degree[$plugin]}" -eq 0 ] && [ "${processed[$plugin]}" = "false" ]; then
+                current_layer="$current_layer $plugin"
             fi
         done
+
+        # 如果没有找到，说明可能有环或剩余的都是有依赖的
+        if [ -z "$(echo "$current_layer" | tr -d ' ')" ]; then
+            # 强制输出剩余的（可能是循环依赖）
+            for plugin in $remaining; do
+                [ -z "$plugin" ] && continue
+                if [ "${processed[$plugin]}" = "false" ]; then
+                    current_layer="$current_layer $plugin"
+                fi
+            done
+        fi
+
+        # 输出当前层
+        echo "$current_layer" | xargs
+
+        # 标记为已处理，并更新依赖它们的插件的入度
+        for plugin in $current_layer; do
+            [ -z "$plugin" ] && continue
+            processed[$plugin]=true
+            # 减少依赖此插件的入度
+            for dependent in ${deps_map[$plugin]}; do
+                [ -n "$dependent" ] && ((in_degree[$dependent]--))
+            done
+        done
+
+        # 更新剩余列表
+        local new_remaining=""
+        for plugin in $remaining; do
+            if [ "${processed[$plugin]}" = "false" ]; then
+                new_remaining="$new_remaining $plugin"
+            fi
+        done
+        remaining="$new_remaining"
     done
-    
-    # 检查是否有环
-    if [ ${#result[@]} -ne $(echo $plugins | wc -w) ]; then
-        log_warning "Circular dependency detected! Using original order."
-        echo "$plugins"
-    else
-        echo "${result[*]}"
-    fi
 }
 
 # ===========================================

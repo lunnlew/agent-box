@@ -1,0 +1,67 @@
+# OpenSpace 插件定义
+name: openspace
+version: "1.0.0"
+description: OpenSpace - AI Agent 自我进化引擎，让 Agent 更智能、更低成本、自我进化
+
+# 依赖要求
+requires:
+  - python3 >= 3.12
+  - pip
+  - bash
+  - nodejs >= 20  # Dashboard 前端需要
+
+# 安装命令 - 使用外部脚本文件
+install:
+  - bash ~/plugins-config/openspace/scripts/install.sh
+
+# 环境变量配置
+env:
+  OPENSPACE_PORT: export OPENSPACE_PORT=${OPENSPACE_PORT:-7788}
+  OPENSPACE_FRONTEND_PORT: export OPENSPACE_FRONTEND_PORT=${OPENSPACE_FRONTEND_PORT:-5174}
+  OPENSPACE_API_KEY: optional
+  OPENSPACE_HOST_SKILL_DIRS: optional
+  OPENSPACE_WORKSPACE: optional
+  PATH_APPEND: ~/bin
+
+# 需要持久化的目录
+volumes:
+  - ~/openspace-src
+  - ~/.openspace
+  - ~/bin
+
+# 服务配置 - Dashboard（Supervisor 管理）
+service:
+  daemon: true
+  auto_start: true
+  restart: true
+  max_restarts: 5
+  command: bash ~/plugins-config/openspace/scripts/start.sh
+
+# 健康检查
+healthcheck:
+  command: test -f $HOME/openspace-src/.venv/bin/openspace-dashboard || test -f $HOME/bin/openspace
+
+# 安装后提示 - 使用外部脚本文件
+post_install:
+  - bash ~/plugins-config/openspace/scripts/post_install.sh
+
+# 卸载命令 - 使用外部脚本文件
+uninstall:
+  - bash ~/plugins-config/openspace/scripts/uninstall.sh
+
+# 更新命令 - 使用外部脚本文件
+update:
+  - bash ~/plugins-config/openspace/scripts/update.sh
+
+# 服务端口信息
+ports:
+  - 7788: OpenSpace Dashboard Backend (映射到 ${OPENSPACE_PORT:-7788})
+  - 5174: OpenSpace Dashboard Frontend (映射到 ${OPENSPACE_FRONTEND_PORT:-5174})
+
+# 标签
+tags:
+  - ai-agent
+  - self-evolving
+  - skill-engine
+  - mcp
+  - dashboard

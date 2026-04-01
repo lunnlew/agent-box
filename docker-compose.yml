@@ -66,6 +66,10 @@ services:
       - "${SKILLS_MANAGER_NOVNC_PORT:-6080}:6080"
       # OpenClaw Manager (容器内 6081)
       - "${OPENCLAW_MANAGER_NOVNC_PORT:-6081}:6081"
+      # OpenSpace Dashboard Backend (容器内 7788)
+      - "${OPENSPACE_PORT:-7788}:7788"
+      # OpenSpace Dashboard Frontend (容器内 5174)
+      - "${OPENSPACE_FRONTEND_PORT:-5174}:5174"
 
     # Docker socket 权限
     group_add:
