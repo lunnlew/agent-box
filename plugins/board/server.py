@@ -130,17 +130,17 @@ SERVICES = {
         'category': 'ai',
         'check_host': '127.0.0.1'
     },
-    'copaw': {
+    'copaw-docker': {
         'internal_port': 8088,
-        'external_port': int(os.environ.get('COPAW_PORT', 8088)),
-        'name': 'CoPaw Gateway',
+        'external_port': int(os.environ.get('COPAW_DOCKER_PORT', 8088)),
+        'name': 'CoPaw Docker',
         'icon': '🐾',
-        'desc': 'AgentScope AI 编程助手网关',
+        'desc': 'AgentScope AI 编程助手（Docker 容器方式）',
         'path': '',
         'color': 'pink',
         'badge': 'new',
         'category': 'ai',
-        'check_host': '127.0.0.1'
+        'check_host': 'host.docker.internal'
     },
     'skills-manager': {
         'internal_port': 6080,

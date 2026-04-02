@@ -1,0 +1,60 @@
+# CoPaw Docker 插件定义
+name: copaw-docker
+version: "1.0.0"
+description: CoPaw Docker - AgentScope AI 编程助手（Docker 容器方式）
+
+# 依赖要求
+requires:
+  - docker
+  - bash
+
+# 安装命令 - 使用外部脚本文件
+install:
+  - bash ~/plugins-config/copaw-docker/scripts/install.sh
+
+# 环境变量配置
+env:
+  COPAW_DOCKER_PORT: export COPAW_DOCKER_PORT=${COPAW_DOCKER_PORT:-8088}
+  COPAW_DOCKER_IMAGE: export COPAW_DOCKER_IMAGE=${COPAW_DOCKER_IMAGE:-agentscope/copaw:latest}
+  # 国内用户可选用阿里云 ACR 镜像：agentscope-registry.ap-southeast-1.cr.aliyuncs.com/agentscope/copaw:latest
+  DASHSCOPE_API_KEY: export DASHSCOPE_API_KEY=${DASHSCOPE_API_KEY:-}
+
+# 安装后提示 - 使用外部脚本文件
+post_install:
+  - bash ~/plugins-config/copaw-docker/scripts/post_install.sh
+
+# 需要持久化的目录（Docker volumes）
+volumes:
+  - copaw-data
+  - copaw-secrets
+
+# 健康检查
+healthcheck:
+  command: docker ps --filter name=copaw-docker --filter status=running -q | grep -q .
+
+# 服务配置 - 使用 Docker 容器运行
+service:
+  daemon: false
+  auto_start: true
+  command: bash ~/plugins-config/copaw-docker/scripts/start.sh
+  stop_command: bash ~/plugins-config/copaw-docker/scripts/stop.sh
+  restart_command: bash ~/plugins-config/copaw-docker/scripts/restart.sh
+
+# 卸载命令 - 使用外部脚本文件
+uninstall:
+  - bash ~/plugins-config/copaw-docker/scripts/uninstall.sh
+
+# 更新命令 - 使用外部脚本文件
+update:
+  - bash ~/plugins-config/copaw-docker/scripts/update.sh
+
+# 服务端口信息
+ports:
+  - 8088: CoPaw Web Console (映射到 ${COPAW_DOCKER_PORT:-8088})
+
+# 标签
+tags:
+  - ai
+  - coding
+  - docker
+  - agentscope

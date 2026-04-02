@@ -31,8 +31,12 @@ plugins:
   - name: kilocode
     enabled: true
 
-  # CoPaw - AgentScope AI 编程助手
+  # CoPaw - AgentScope AI 编程助手（已禁用，使用 copaw-docker 替代）
   - name: copaw
+    enabled: false
+
+  # CoPaw Docker - AgentScope AI 编程助手（Docker 容器方式）
+  - name: copaw-docker
     enabled: true
 
   # OpenAI Codex CLI - OpenAI 官方 AI 编程助手

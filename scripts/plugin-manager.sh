@@ -895,7 +895,7 @@ restore_all_plugin_volumes() {
 # 等待依赖服务就绪
 wait_for_dependency() {
     local dep_name="$1"
-    local max_wait=30
+    local max_wait=120
     local count=0
 
     log_info "Waiting for dependency $dep_name to be ready..."
