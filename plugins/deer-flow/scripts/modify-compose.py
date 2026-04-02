@@ -4,6 +4,7 @@ import re
 
 # Get the DeerFlow root directory from environment
 deer_flow_root = os.environ.get('DEER_FLOW_ROOT', '')
+deer_flow_host_share = os.environ.get('DEER_FLOW_HOST_SHARE', '')
 
 # Define path replacements - ordered from most specific to least specific
 # This ensures volume mounts are replaced before generic paths
@@ -47,8 +48,23 @@ with open('docker-compose-dev.yaml', 'r') as f:
 for pattern, replacement in replacements.items():
     content = re.sub(pattern, replacement, content)
 
+# Add host-share mount to gateway and langgraph services
+if deer_flow_host_share:
+    # Find and add host-share mount after docker.sock mount in gateway
+    # Pattern: look for the docker.sock line and add host-share after it
+    gateway_pattern = r'(- /var/run/docker\.sock:/var/run/docker\.sock)\s*\n\s*(# CLI auth directories)'
+    gateway_replacement = f'- /var/run/docker.sock:/var/run/docker.sock\n      # Host share directory\n      - {deer_flow_host_share}:/host-share\n      {gateway_pattern.group(2) if hasattr(gateway_pattern, "group") else "# CLI auth directories"}'
+
+    # Use simpler replacement - add host-share after docker.sock in both services
+    content = re.sub(
+        r'(- /var/run/docker\.sock:/var/run/docker\.sock)\n(\s+)(# CLI auth)',
+        f'- /var/run/docker.sock:/var/run/docker.sock\n\\2# Host share directory\n\\2- {deer_flow_host_share}:/host-share\n\\2# CLI auth',
+        content
+    )
+
 with open('docker-compose-dev-modified.yaml', 'w') as f:
     f.write(content)
 
 print('Modified docker-compose-dev-modified.yaml created')
 print(f'DEER_FLOW_ROOT = {os.environ.get("DEER_FLOW_ROOT", "not set")}')
+print(f'DEER_FLOW_HOST_SHARE = {os.environ.get("DEER_FLOW_HOST_SHARE", "not set")}')
