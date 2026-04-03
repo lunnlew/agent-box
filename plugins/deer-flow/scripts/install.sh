@@ -65,7 +65,7 @@ fi
 
 # 运行 docker-init 预拉取镜像
 log_info "Running docker-init..."
-export DEER_FLOW_ROOT="$(bash ~/plugins-config/deer-flow/scripts/setup-docker-root.sh ~/deer-flow)"
+export DEER_FLOW_ROOT="$(get_host_mount_path agentbox /home/agent deer-flow)"
 log_info "DEER_FLOW_ROOT set to: $DEER_FLOW_ROOT"
 make docker-init || log_warning "docker-init skipped (local sandbox mode)"
 

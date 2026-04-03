@@ -686,8 +686,60 @@ get_mount_source() {
 # Docker-in-Docker 路径映射
 # ===========================================
 
+# 获取容器挂载点对应的主机路径
+# 用法：get_host_mount_path [container_name] [container_path] [relative_path]
+# 参数：
+#   container_name - 容器名称（默认：agentbox）
+#   container_path - 容器内挂载路径（默认：/home/agent）
+#   relative_path  - 相对于 container_path 的子路径（可选）
+# 返回：转换后的主机路径（stdout），失败返回容器路径
+#
+# 支持的平台：
+#   - Linux 原生 Docker：返回原始主机路径
+#   - Docker Desktop WSL2 (Windows)：转换 D:\path 为 /d/path 格式
+#   - Docker Desktop macOS：处理 /host_mnt 或 /run/desktop/mnt/host 格式
+get_host_mount_path() {
+    local container_name="${1:-agentbox}"
+    local container_path="${2:-/home/agent}"
+    local relative_path="${3:-}"
+
+    # 获取挂载源路径（主机路径）
+    local host_source=$(docker inspect "$container_name" --format '{{range .Mounts}}{{if eq .Destination "'"$container_path"'"}}{{.Source}}{{end}}{{end}}' 2>/dev/null)
+
+    if [ -z "$host_source" ]; then
+        # 无法获取挂载源，返回容器路径（fallback）
+        if [ -n "$relative_path" ]; then
+            echo "${container_path}/${relative_path}"
+        else
+            echo "$container_path"
+        fi
+        return 1
+    fi
+
+    # 转换路径为 Unix 格式
+    if [[ "$host_source" =~ ^/host_mnt/ || "$host_source" =~ ^/run/desktop/mnt/host/ ]]; then
+        # Docker Desktop macOS/Linux VM 格式，保持原样
+        :
+    elif [[ "$host_source" =~ ^[A-Za-z]: ]]; then
+        # Windows 路径 D:\path -> /d/path 格式
+        host_source=$(echo "$host_source" | tr '\\' '/' | sed 's|^\([A-Za-z]\):|/\L\1|')
+    else
+        # 标准 Linux 路径
+        host_source=$(echo "$host_source" | tr -s '/')
+    fi
+
+    # 如果指定了相对路径，追加到结果
+    if [ -n "$relative_path" ]; then
+        echo "${host_source}/${relative_path}"
+    else
+        echo "$host_source"
+    fi
+
+    return 0
+}
+
 # 创建主机路径到容器路径的符号链接
-# 用法：create_host_path_mapping
+# 用法：create_host_path_mapping [container_name] [container_path]
 # 功能：让 Docker-in-Docker 插件能够使用主机路径访问容器内的文件
 # 例如：/home/user/project/data -> /home/agent
 #
@@ -698,21 +750,13 @@ create_host_path_mapping() {
     local container_name="${1:-agentbox}"
     local container_path="${2:-/home/agent}"
 
-    # 获取挂载源路径（主机路径）
-    local host_source=$(docker inspect "$container_name" --format '{{range .Mounts}}{{if eq .Destination "'"$container_path"'"}}{{.Source}}{{end}}{{end}}' 2>/dev/null)
+    # 使用共享函数获取主机路径
+    local host_source=$(get_host_mount_path "$container_name" "$container_path")
 
-    if [ -z "$host_source" ]; then
+    # 检查是否成功获取（get_host_mount_path 失败时会返回容器路径）
+    if [ "$host_source" = "$container_path" ]; then
         log_warning "无法获取 $container_path 挂载源，跳过路径映射"
         return 1
-    fi
-
-    # 将路径转换为标准格式
-    if [[ "$host_source" =~ ^/host_mnt/ || "$host_source" =~ ^/run/desktop/mnt/host/ ]]; then
-        :  # Docker Desktop Linux VM 格式，直接使用
-    elif [[ "$host_source" =~ ^[A-Za-z]: ]]; then
-        host_source=$(echo "$host_source" | tr "\\" "/" | sed "s|^\([A-Za-z]\):|/\L\1|")
-    else
-        host_source=$(echo "$host_source" | tr -s "/")
     fi
 
     log_info "主机路径: $host_source -> 容器路径: $container_path"

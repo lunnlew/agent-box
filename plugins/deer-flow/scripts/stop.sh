@@ -22,7 +22,7 @@ chown -R agent:agent ~/.docker/buildx 2>/dev/null || true
 chmod -R 755 ~/.docker/buildx 2>/dev/null || true
 
 # 设置 DEER_FLOW_ROOT
-export DEER_FLOW_ROOT="$(bash ~/plugins-config/deer-flow/scripts/setup-docker-root.sh ~/deer-flow)"
+export DEER_FLOW_ROOT="$(get_host_mount_path agentbox /home/agent deer-flow)"
 
 # 停止服务
 make docker-stop 2>/dev/null || true

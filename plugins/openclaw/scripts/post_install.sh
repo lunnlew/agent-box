@@ -11,13 +11,31 @@ source /opt/lib.sh 2>/dev/null || {
 
 # OpenClaw 安装后配置
 
-
 OPENCLAW_PORT="${OPENCLAW_PORT:-18789}"
 
 mkdir -p ~/.openclaw/devices
 rm -rf ~/.openclaw/extensions/lossless-claw 2>/dev/null || true
 if command -v openclaw &> /dev/null; then
   openclaw plugins install @martian-engineering/lossless-claw || true
+fi
+
+# 初始化配置（如果不存在）
+if [ ! -f ~/.openclaw/openclaw.json ]; then
+  log_info "Initializing OpenClaw configuration..."
+  # 创建最小配置
+  mkdir -p ~/.openclaw
+  cat > ~/.openclaw/openclaw.json << 'CONFIGEOF'
+{
+  "gateway": {
+    "mode": "local"
+  },
+  "auth": {
+    "mode": "token",
+    "token": "${OPENCLAW_GATEWAY_TOKEN}"
+  }
+}
+CONFIGEOF
+  log_success "Configuration created with gateway.mode=local"
 fi
 
 echo ""
@@ -27,10 +45,9 @@ echo "============================================"
 echo ""
 echo "快速开始:"
 echo "  1. 设置 Token: export OPENCLAW_GATEWAY_TOKEN=your-token"
-echo "  2. 运行向导配置：openclaw onboard"
-echo "  3. 启动 Gateway: openclaw gateway --port ${OPENCLAW_PORT}"
-echo "  4. 访问 Dashboard: http://localhost:${OPENCLAW_PORT}"
+echo "  2. 启动 Gateway: openclaw gateway --port ${OPENCLAW_PORT}"
+echo "  3. 访问 Dashboard: http://localhost:${OPENCLAW_PORT}"
 echo ""
-echo "或直接运行：openclaw dashboard --no-open"
+echo "或运行向导配置：openclaw onboard"
 echo "============================================"
 echo ""

@@ -24,10 +24,20 @@ echo "  Starting DeerFlow Docker Development"
 echo "=========================================="
 echo ""
 
-# 获取 Windows 主机路径 - 使用 Python 脚本处理 Docker Desktop WSL2 路径转换
+# 获取 Windows 主机路径 - 使用共享函数处理 Docker Desktop WSL2 路径转换
+# 计算相对于 /home/agent 的相对路径
 get_windows_path() {
     local container_path="$1"
-    python3 ~/plugins-config/deer-flow/scripts/get-windows-path.py "$container_path"
+    local rel_path=""
+    local home="${HOME:-/home/agent}"
+
+    # 计算相对路径
+    if [[ "$container_path" == "$home/"* ]]; then
+        rel_path="${container_path#$home/}"
+    fi
+
+    # 使用共享函数获取主机路径
+    get_host_mount_path agentbox /home/agent "$rel_path"
 }
 
 # 获取 agentbox 容器中所有 /host-share 相关的挂载信息
@@ -59,6 +69,18 @@ if [ -f "$DEERFLOW_DIR/.env" ]; then
     set +a
     echo "Loaded environment variables:"
     grep -v "^#" "$DEERFLOW_DIR/.env" | grep "=" | head -5
+fi
+
+# 确保 frontend/.env 存在（Next.js 前端需要）
+if [ ! -f "$DEERFLOW_DIR/frontend/.env" ]; then
+    echo "Creating frontend/.env..."
+    mkdir -p "$DEERFLOW_DIR/frontend"
+    cat > "$DEERFLOW_DIR/frontend/.env" << 'FRONTENDENVEOF'
+# DeerFlow Frontend 环境配置
+# Backend API URLs (optional, uses nginx proxy by default)
+# NEXT_PUBLIC_BACKEND_BASE_URL="http://localhost:8001"
+# NEXT_PUBLIC_LANGGRAPH_BASE_URL="http://localhost:2024"
+FRONTENDENVEOF
 fi
 
 echo "DEER_FLOW_ROOT=$DEER_FLOW_ROOT"
