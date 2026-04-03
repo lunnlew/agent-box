@@ -555,3 +555,92 @@ check_dependencies() {
 
     return 0
 }
+
+# ===========================================
+# Docker-in-Docker 挂载继承函数
+# ===========================================
+
+# 获取 agentbox 容器中所有指定路径相关的挂载信息
+# 用法：get_inherited_mounts <container_name> <path_prefix>
+#   container_name: 容器名称（默认 agentbox）
+#   path_prefix: 挂载路径前缀（默认 /host-share）
+# 返回：VOLUME_ARGS 变量，包含所有 -v 参数
+# 示例：
+#   get_inherited_mounts agentbox /host-share
+#   echo "$VOLUME_ARGS"  # 输出: -v /home/user/workspace:/host-share/workspace -v /path/to/host-share:/host-share
+get_inherited_mounts() {
+    local container_name="${1:-agentbox}"
+    local path_prefix="${2:-/host-share}"
+
+    VOLUME_ARGS=""
+    HOST_SHARE_MOUNTS=""
+
+    # 获取容器所有挂载信息
+    local all_mounts=$(docker inspect "$container_name" --format '{{range .Mounts}}{{.Source}}:{{.Destination}}{{println}}{{end}}' 2>/dev/null)
+
+    if [ -z "$all_mounts" ]; then
+        log_warning "无法获取容器 $container_name 的挂载信息"
+        return 1
+    fi
+
+    # 过滤出指定路径相关的挂载
+    while IFS= read -r mount; do
+        [ -z "$mount" ] && continue
+
+        local source=$(echo "$mount" | cut -d':' -f1)
+        local dest=$(echo "$mount" | cut -d':' -f2)
+
+        # 检查是否匹配路径前缀（精确匹配或子目录）
+        if [ "$dest" = "$path_prefix" ] || [[ "$dest" == "${path_prefix}/"* ]]; then
+            # 将路径转换为 Docker 兼容格式
+            if [[ "$source" =~ ^/host_mnt/ || "$source" =~ ^/run/desktop/mnt/host/ ]]; then
+                log_info "使用 Docker Desktop Linux VM 格式路径: $source"
+            elif [[ "$source" =~ ^[A-Za-z]: ]]; then
+                source=$(echo "$source" | tr "\\" "/" | sed "s|^\([A-Za-z]\):|/\L\1|")
+                log_info "转换 Windows 路径为 Linux 格式: $source"
+            else
+                source=$(echo "$source" | tr -s "/")
+            fi
+
+            VOLUME_ARGS="$VOLUME_ARGS -v ${source}:${dest}"
+            HOST_SHARE_MOUNTS="$HOST_SHARE_MOUNTS ${source}:${dest}"
+            log_info "继承挂载: ${source} -> ${dest}"
+        fi
+    done <<< "$all_mounts"
+
+    if [ -z "$VOLUME_ARGS" ]; then
+        log_warning "未找到任何 ${path_prefix} 相关挂载"
+        return 1
+    fi
+
+    return 0
+}
+
+# 获取单个挂载的源路径（简化版）
+# 用法：get_mount_source <container_name> <dest_path>
+#   container_name: 容器名称（默认 agentbox）
+#   dest_path: 容器内目标路径
+# 返回：源路径（已转换为 Docker 兼容格式）
+get_mount_source() {
+    local container_name="${1:-agentbox}"
+    local dest_path="$2"
+
+    local source=$(docker inspect "$container_name" --format '{{range .Mounts}}{{if eq .Destination "'"$dest_path"'"}}{{.Source}}{{end}}{{end}}' 2>/dev/null)
+
+    if [ -z "$source" ]; then
+        log_warning "无法获取 $dest_path 挂载源"
+        return 1
+    fi
+
+    # 将路径转换为 Docker 兼容格式
+    if [[ "$source" =~ ^/host_mnt/ || "$source" =~ ^/run/desktop/mnt/host/ ]]; then
+        :  # Docker Desktop Linux VM 格式，直接使用
+    elif [[ "$source" =~ ^[A-Za-z]: ]]; then
+        source=$(echo "$source" | tr "\\" "/" | sed "s|^\([A-Za-z]\):|/\L\1|")
+    else
+        source=$(echo "$source" | tr -s "/")
+    fi
+
+    echo "$source"
+    return 0
+}

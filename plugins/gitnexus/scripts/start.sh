@@ -32,8 +32,11 @@ docker rm -f gitnexus-web 2>/dev/null || true
 
 sleep 1
 
+# 获取 agentbox 容器中所有 /host-share 相关的挂载信息（使用共享函数）
+get_inherited_mounts agentbox /host-share
+
 # 自动从 agentbox 容器挂载信息获取 host 路径
-AGENTBOX_MOUNT=$(docker inspect agentbox --format "{{range .Mounts}}{{if eq .Destination \"/home/agent\"}}{{.Source}}{{end}}{{end}}" 2>/dev/null)
+AGENTBOX_MOUNT=$(get_mount_source agentbox /home/agent)
 
 if [ -z "$AGENTBOX_MOUNT" ]; then
   echo "ERROR: Could not detect host path from agentbox mounts"
@@ -46,8 +49,8 @@ else
   WEB_DIST_PATH="${AGENTBOX_MOUNT}/gitnexus-src/gitnexus-web/dist"
 fi
 
-# 构建 docker run 挂载参数
-DOCKER_VOLUMES="-v \"${GITNEXUS_DATA_PATH}:/root/.gitnexus\""
+# 构建 docker run 挂载参数 - 包含继承的 /host-share 挂载
+DOCKER_VOLUMES="-v \"${GITNEXUS_DATA_PATH}:/root/.gitnexus\" ${VOLUME_ARGS}"
 
 # 解析额外的仓库挂载路径
 # 格式：/path/to/repo1[:name1],/path/to/repo2[:name2]

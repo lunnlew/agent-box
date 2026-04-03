@@ -30,33 +30,14 @@ get_windows_path() {
     python3 ~/plugins-config/deer-flow/scripts/get-windows-path.py "$container_path"
 }
 
-# 获取 agentbox 容器的 /host-share 挂载源路径（主机路径）
-HOST_SHARE_SOURCE=$(docker inspect agentbox --format '{{range .Mounts}}{{if eq .Destination "/host-share"}}{{.Source}}{{end}}{{end}}')
+# 获取 agentbox 容器中所有 /host-share 相关的挂载信息
+# 使用共享函数（返回 VOLUME_ARGS 和 HOST_SHARE_MOUNTS 变量）
+get_inherited_mounts agentbox /host-share
 
-if [ -z "$HOST_SHARE_SOURCE" ]; then
-    log_warning "无法获取 host-share 挂载源，使用默认路径"
-    HOST_SHARE_SOURCE="$HOME"
-fi
-
-log_info "检测到的 host-share 源路径: $HOST_SHARE_SOURCE"
-
-# 将路径转换为 Docker 兼容格式（Windows 格式需要转换为 Linux 格式）
-if [[ "$HOST_SHARE_SOURCE" =~ ^/host_mnt/ || "$HOST_SHARE_SOURCE" =~ ^/run/desktop/mnt/host/ ]]; then
-    log_info "使用 Docker Desktop Linux VM 格式路径"
-elif [[ "$HOST_SHARE_SOURCE" =~ ^[A-Za-z]: ]]; then
-    # Windows 格式 (D:/path 或 D:\path)，转换为 /d/path 格式
-    # 但对于 DeerFlow，需要保留 Windows 格式（小写盘符）
-    HOST_SHARE_SOURCE=$(echo "$HOST_SHARE_SOURCE" | tr "\\" "/" | sed "s|^\([A-Za-z]\):|/\L\1|")
-    log_info "转换 Windows 路径为 Linux 格式: $HOST_SHARE_SOURCE"
-else
-    HOST_SHARE_SOURCE=$(echo "$HOST_SHARE_SOURCE" | tr -s "/")
-fi
-
-log_info "Host share source (final): $HOST_SHARE_SOURCE"
-
-# 设置环境变量 - 使用 Windows 主机路径（Docker-in-Docker 关键！）
+# 设置环境变量 - 使用继承的挂载信息
 export DEER_FLOW_ROOT=$(get_windows_path "$DEERFLOW_DIR")
-export DEER_FLOW_HOST_SHARE="$HOST_SHARE_SOURCE"
+export DEER_FLOW_HOST_SHARE_MOUNTS="$HOST_SHARE_MOUNTS"
+export DEER_FLOW_HOST_SHARE_VOLUME_ARGS="$VOLUME_ARGS"
 export DEER_FLOW_CONFIG_PATH="$DEER_FLOW_ROOT/config.yaml"
 export DEER_FLOW_EXTENSIONS_CONFIG_PATH="$DEER_FLOW_ROOT/extensions_config.json"
 export DEER_FLOW_HOME="$DEER_FLOW_ROOT/backend/.deer-flow"

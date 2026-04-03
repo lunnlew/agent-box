@@ -43,32 +43,11 @@ fi
 # 容器不存在，创建并启动
 log_info "Creating and starting CoPaw Docker container..."
 
-# 获取 agentbox 容器的 /host-share 挂载源路径（主机路径）
-HOST_SHARE_SOURCE=$(docker inspect agentbox --format '{{range .Mounts}}{{if eq .Destination "/host-share"}}{{.Source}}{{end}}{{end}}')
+# 获取 agentbox 容器中所有 /host-share 相关的挂载信息
+# 使用共享函数（返回 VOLUME_ARGS 和 HOST_SHARE_MOUNTS 变量）
+get_inherited_mounts agentbox /host-share
 
-if [ -z "$HOST_SHARE_SOURCE" ]; then
-  log_warning "无法获取 host-share 挂载源，使用默认路径"
-  HOST_SHARE_SOURCE="$HOME"
-fi
-
-log_info "检测到的 host-share 源路径: $HOST_SHARE_SOURCE"
-
-# 将路径转换为 Docker 兼容格式
-# Docker Desktop Linux VM 格式 (/host_mnt/d/path 或 /run/desktop/mnt/host/d/path) - 已经是 Linux 格式，直接使用
-# Windows 格式 (D:/path 或 D:\path) - 需要转换为 /d/path 格式
-if [[ "$HOST_SHARE_SOURCE" =~ ^/host_mnt/ || "$HOST_SHARE_SOURCE" =~ ^/run/desktop/mnt/host/ ]]; then
-  # Docker Desktop Linux VM 格式，直接使用
-  log_info "使用 Docker Desktop Linux VM 格式路径"
-elif [[ "$HOST_SHARE_SOURCE" =~ ^[A-Za-z]: ]]; then
-  # Windows 格式 (D:/path 或 D:\path)，转换为 /d/path 格式
-  HOST_SHARE_SOURCE=$(echo "$HOST_SHARE_SOURCE" | tr "\\" "/" | sed "s|^\([A-Za-z]\):|/\L\1|")
-  log_info "转换 Windows 路径为 Linux 格式: $HOST_SHARE_SOURCE"
-else
-  # 其他格式（可能是 Linux 原生路径），清理多余斜杠
-  HOST_SHARE_SOURCE=$(echo "$HOST_SHARE_SOURCE" | tr -s "/")
-fi
-
-log_info "Host share source (final): $HOST_SHARE_SOURCE"
+log_info "Volume args: $VOLUME_ARGS"
 
 # 构建 docker run 命令
 DOCKER_RUN_CMD="docker run -d \
@@ -76,7 +55,7 @@ DOCKER_RUN_CMD="docker run -d \
   -p 127.0.0.1:${COPAW_DOCKER_PORT}:8088 \
   -v copaw-data:/app/working \
   -v copaw-secrets:/app/working.secret \
-  -v ${HOST_SHARE_SOURCE}:/host-share"
+  ${VOLUME_ARGS}"
 
 # 如果设置了 DASHSCOPE_API_KEY，传入环境变量
 if [ -n "$DASHSCOPE_API_KEY" ]; then
@@ -96,7 +75,7 @@ sleep 5
 if docker ps --filter name=copaw-docker --filter status=running -q | grep -q .; then
   log_success "CoPaw Docker started successfully"
   log_info "Access CoPaw at: http://127.0.0.1:${COPAW_DOCKER_PORT}/"
-  log_info "Host share mounted at: /host-share"
+  log_info "Host share mounts: ${HOST_SHARE_MOUNTS}"
 else
   log_error "Failed to start CoPaw Docker. Check logs: docker logs copaw-docker"
   exit 1
