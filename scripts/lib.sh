@@ -644,3 +644,114 @@ get_mount_source() {
     echo "$source"
     return 0
 }
+
+# ===========================================
+# Docker-in-Docker 路径映射
+# ===========================================
+
+# 创建主机路径到容器路径的符号链接
+# 用法：create_host_path_mapping
+# 功能：让 Docker-in-Docker 插件能够使用主机路径访问容器内的文件
+# 例如：/home/user/project/data -> /home/agent
+#
+# 注意：此函数处理特殊情况 - 当主机路径的最后一部分（如 "data")
+# 已经作为挂载点存在时，需要先移除挂载点（但这会破坏挂载），所以
+# 我们采用另一种策略：创建父目录结构，然后让用户通过父目录访问
+create_host_path_mapping() {
+    local container_name="${1:-agentbox}"
+    local container_path="${2:-/home/agent}"
+
+    # 获取挂载源路径（主机路径）
+    local host_source=$(docker inspect "$container_name" --format '{{range .Mounts}}{{if eq .Destination "'"$container_path"'"}}{{.Source}}{{end}}{{end}}' 2>/dev/null)
+
+    if [ -z "$host_source" ]; then
+        log_warning "无法获取 $container_path 挂载源，跳过路径映射"
+        return 1
+    fi
+
+    # 将路径转换为标准格式
+    if [[ "$host_source" =~ ^/host_mnt/ || "$host_source" =~ ^/run/desktop/mnt/host/ ]]; then
+        :  # Docker Desktop Linux VM 格式，直接使用
+    elif [[ "$host_source" =~ ^[A-Za-z]: ]]; then
+        host_source=$(echo "$host_source" | tr "\\" "/" | sed "s|^\([A-Za-z]\):|/\L\1|")
+    else
+        host_source=$(echo "$host_source" | tr -s "/")
+    fi
+
+    log_info "主机路径: $host_source -> 容器路径: $container_path"
+
+    # 特殊情况处理：
+    # host_source (如 /home/lunnlew/my-workspace/agent-box/data) 已经作为挂载点存在
+    # 我们需要创建父目录结构，并让最后一部分指向容器路径
+    #
+    # 策略：创建 host_source 的父目录，然后在父目录中创建指向 container_path 的链接
+    # 例如：创建 /home/lunnlew/my-workspace/agent-box 目录，然后在其中创建 data -> /home/agent 链接
+
+    local link_name=$(basename "$host_source")
+    local link_parent=$(dirname "$host_source")
+
+    # 检查父目录是否已存在
+    if [ -d "$link_parent" ]; then
+        log_info "父目录已存在: $link_parent"
+    else
+        # 创建父目录结构
+        log_info "创建路径映射目录结构: $link_parent"
+
+        if [ "$(id -u)" = "0" ]; then
+            mkdir -p "$link_parent" 2>/dev/null || {
+                log_warning "无法创建父目录: $link_parent"
+                return 1
+            }
+        else
+            mkdir -p "$link_parent" 2>/dev/null || {
+                log_warning "无法创建父目录: $link_parent"
+                log_warning "请在容器启动时以 root 用户运行"
+                return 1
+            }
+        fi
+    fi
+
+    # 检查 link_name 是否已存在
+    local full_link_path="${link_parent}/${link_name}"
+
+    if [ -L "$full_link_path" ]; then
+        local current_link=$(readlink "$full_link_path" 2>/dev/null)
+        if [ "$current_link" = "$container_path" ]; then
+            log_info "路径映射已存在: $full_link_path -> $container_path"
+            return 0
+        fi
+        log_info "更新路径映射: $full_link_path -> $container_path"
+        rm -f "$full_link_path" 2>/dev/null || {
+            log_warning "无法移除旧链接: $full_link_path"
+            return 1
+        }
+    elif [ -d "$full_link_path" ]; then
+        # 这是一个真实目录，可能是挂载点本身
+        # 我们不能删除它，因为这会破坏挂载
+        # 检查它是否就是挂载点（即内容与 container_path 相同）
+        if [ "$(cd "$full_link_path" 2>/dev/null && pwd)" = "$(cd "$container_path" 2>/dev/null && pwd)" ]; then
+            log_info "路径已是挂载点，无需创建链接: $full_link_path"
+            # 但父目录结构已创建，这对于访问子路径有用
+            return 0
+        fi
+        log_warning "路径已存在且为真实目录: $full_link_path"
+        log_warning "无法创建符号链接（可能是其他挂载点）"
+        return 1
+    elif [ -e "$full_link_path" ]; then
+        log_warning "路径已存在且为文件: $full_link_path"
+        return 1
+    fi
+
+    # 创建符号链接
+    ln -sf "$container_path" "$full_link_path" 2>/dev/null || {
+        log_warning "无法创建路径映射: $full_link_path -> $container_path"
+        return 1
+    }
+
+    log_success "路径映射创建成功: $full_link_path -> $container_path"
+    return 0
+}
+
+# ===========================================
+# 结束标记
+# ===========================================

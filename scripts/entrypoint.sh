@@ -244,6 +244,12 @@ main_root() {
         chown -R agent:agent "$HOME" 2>/dev/null || true
         chmod -R 755 "$HOME" 2>/dev/null || true
 
+        # 创建主机路径映射（让 Docker-in-Docker 插件能使用主机路径）
+        # 例如：/home/lunnlew/my-workspace/agent-box/data -> /home/agent
+        # 这样插件可以使用主机路径格式访问文件
+        log_info "Creating host path mapping for Docker-in-Docker..."
+        create_host_path_mapping agentbox /home/agent || log_warning "Host path mapping failed, some plugins may fail"
+
         log_info "Switching to agent user..."
         exec gosu agent "$0" --agent "$@"
     fi
