@@ -14,7 +14,7 @@ install:
 
 # 环境变量配置
 env:
-  DASHSCOPE_API_KEY: required
+  DASHSCOPE_API_KEY: optional
 
 # 安装后提示 - 使用外部脚本文件
 post_install:

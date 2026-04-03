@@ -14,7 +14,7 @@ install:
 
 # 环境变量配置
 env:
-  ANTHROPIC_API_KEY: required
+  ANTHROPIC_API_KEY: optional
   PATH_APPEND: ~/.local/bin
 
 # 安装后提示 - 使用外部脚本文件
