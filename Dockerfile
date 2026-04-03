@@ -113,6 +113,8 @@ RUN apt-get update && apt-get install -y \
     nodejs \
     # Docker Compose (插件版，支持 docker compose 子命令)
     docker-compose-plugin \
+    # locales
+    locales && locale-gen en_US.UTF-8 && update-locale LANG=en_US.UTF-8 \
     # 清理缓存
     && rm -rf /var/lib/apt/lists/* \
     && apt-get clean
