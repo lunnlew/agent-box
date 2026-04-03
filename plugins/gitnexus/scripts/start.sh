@@ -122,6 +122,7 @@ sleep 3
 if [ -n "$REPO_INDEX_LIST" ] && [ "$GITNEXUS_AUTO_INDEX" = "true" ]; then
   echo ""
   echo "Auto-indexing mounted repositories..."
+  docker exec gitnexus-bridge git config --global --add safe.directory "*" 2>/dev/null || true
   for repo_path in $REPO_INDEX_LIST; do
     echo "  Indexing: $repo_path"
     docker exec gitnexus-bridge gitnexus analyze "$repo_path" --force 2>&1 | tail -10

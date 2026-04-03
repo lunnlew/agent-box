@@ -567,7 +567,7 @@ check_dependencies() {
 # 返回：VOLUME_ARGS 变量，包含所有 -v 参数
 # 示例：
 #   get_inherited_mounts agentbox /host-share
-#   echo "$VOLUME_ARGS"  # 输出: -v /home/user/workspace:/host-share/workspace -v /path/to/host-share:/host-share
+#   echo "$VOLUME_ARGS"  # 输出: -v "/home/user/workspace:/host-share/workspace" -v "/path/to/host-share:/host-share"
 get_inherited_mounts() {
     local container_name="${1:-agentbox}"
     local path_prefix="${2:-/host-share}"
@@ -575,38 +575,75 @@ get_inherited_mounts() {
     VOLUME_ARGS=""
     HOST_SHARE_MOUNTS=""
 
-    # 获取容器所有挂载信息
-    local all_mounts=$(docker inspect "$container_name" --format '{{range .Mounts}}{{.Source}}:{{.Destination}}{{println}}{{end}}' 2>/dev/null)
+    # 清理可能存在的临时文件
+    rm -f /tmp/volume_args_$$ /tmp/host_share_mounts_$$ 2>/dev/null
 
-    if [ -z "$all_mounts" ]; then
+    # 获取容器所有挂载信息 - 使用 JSON 格式更可靠
+    local mounts_json=$(docker inspect "$container_name" --format '{{json .Mounts}}' 2>/dev/null)
+
+    if [ -z "$mounts_json" ]; then
         log_warning "无法获取容器 $container_name 的挂载信息"
         return 1
     fi
 
-    # 过滤出指定路径相关的挂载
-    while IFS= read -r mount; do
-        [ -z "$mount" ] && continue
+    # 使用进程替换避免子进程变量丢失问题
+    # jq 和非 jq 方案都使用临时文件来传递结果
+    if command -v jq &> /dev/null; then
+        # 使用 jq 解析 JSON
+        while IFS= read -r mount_entry; do
+            [ -z "$mount_entry" ] && continue
 
-        local source=$(echo "$mount" | cut -d':' -f1)
-        local dest=$(echo "$mount" | cut -d':' -f2)
+            local source=$(echo "$mount_entry" | jq -r '.Source')
+            local dest=$(echo "$mount_entry" | jq -r '.Destination')
 
-        # 检查是否匹配路径前缀（精确匹配或子目录）
-        if [ "$dest" = "$path_prefix" ] || [[ "$dest" == "${path_prefix}/"* ]]; then
-            # 将路径转换为 Docker 兼容格式
-            if [[ "$source" =~ ^/host_mnt/ || "$source" =~ ^/run/desktop/mnt/host/ ]]; then
-                log_info "使用 Docker Desktop Linux VM 格式路径: $source"
-            elif [[ "$source" =~ ^[A-Za-z]: ]]; then
-                source=$(echo "$source" | tr "\\" "/" | sed "s|^\([A-Za-z]\):|/\L\1|")
-                log_info "转换 Windows 路径为 Linux 格式: $source"
-            else
-                source=$(echo "$source" | tr -s "/")
+            # 检查是否匹配路径前缀（精确匹配或子目录）
+            if [ "$dest" = "$path_prefix" ] || [[ "$dest" == "${path_prefix}/"* ]]; then
+                # 将路径转换为 Docker 兼容格式
+                if [[ "$source" =~ ^/host_mnt/ || "$source" =~ ^/run/desktop/mnt/host/ ]]; then
+                    log_info "使用 Docker Desktop Linux VM 格式路径: $source"
+                elif [[ "$source" =~ ^[A-Za-z]: ]]; then
+                    source=$(echo "$source" | sed 's|\\|/|g' | sed 's|^\([A-Za-z]\):|/\L\1|')
+                    log_info "转换 Windows 路径为 Linux 格式: $source"
+                fi
+
+                # 添加引号保护路径，写入临时文件
+                echo "-v \"${source}:${dest}\"" >> /tmp/volume_args_$$
+                echo "${source}:${dest}" >> /tmp/host_share_mounts_$$
+                log_info "继承挂载: ${source} -> ${dest}"
             fi
+        done < <(echo "$mounts_json" | jq -c '.[]')
+    else
+        # 回退方案：使用 Go 模板直接输出，使用 | 作为分隔符避免冒号分割问题
+        while IFS='|' read -r source dest; do
+            [ -z "$source" ] && continue
 
-            VOLUME_ARGS="$VOLUME_ARGS -v ${source}:${dest}"
-            HOST_SHARE_MOUNTS="$HOST_SHARE_MOUNTS ${source}:${dest}"
-            log_info "继承挂载: ${source} -> ${dest}"
-        fi
-    done <<< "$all_mounts"
+            # 检查是否匹配路径前缀
+            if [ "$dest" = "$path_prefix" ] || [[ "$dest" == "${path_prefix}/"* ]]; then
+                # 将路径转换为 Docker 兼容格式
+                if [[ "$source" =~ ^/host_mnt/ || "$source" =~ ^/run/desktop/mnt/host/ ]]; then
+                    log_info "使用 Docker Desktop Linux VM 格式路径: $source"
+                elif [[ "$source" =~ ^[A-Za-z]: ]]; then
+                    source=$(echo "$source" | sed 's|\\|/|g' | sed 's|^\([A-Za-z]\):|/\L\1|')
+                    log_info "转换 Windows 路径为 Linux 格式: $source"
+                fi
+
+                # 添加引号保护路径，写入临时文件
+                echo "-v \"${source}:${dest}\"" >> /tmp/volume_args_$$
+                echo "${source}:${dest}" >> /tmp/host_share_mounts_$$
+                log_info "继承挂载: ${source} -> ${dest}"
+            fi
+        done < <(docker inspect "$container_name" --format '{{range .Mounts}}{{.Source}}|{{.Destination}}{{println}}{{end}}' 2>/dev/null)
+    fi
+
+    # 从临时文件读取结果
+    if [ -f /tmp/volume_args_$$ ]; then
+        VOLUME_ARGS=$(cat /tmp/volume_args_$$ | tr '\n' ' ')
+        rm -f /tmp/volume_args_$$
+    fi
+    if [ -f /tmp/host_share_mounts_$$ ]; then
+        HOST_SHARE_MOUNTS=$(cat /tmp/host_share_mounts_$$ | tr '\n' ' ')
+        rm -f /tmp/host_share_mounts_$$
+    fi
 
     if [ -z "$VOLUME_ARGS" ]; then
         log_warning "未找到任何 ${path_prefix} 相关挂载"
