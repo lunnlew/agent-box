@@ -509,6 +509,36 @@ check_plugin_dependencies() {
                     return 1
                 fi
                 ;;
+            ansible)
+                if ! check_command ansible; then
+                    log_error "Missing dependency: ansible"
+                    return 1
+                fi
+                ;;
+            ansible-playbook)
+                if ! check_command ansible-playbook; then
+                    log_error "Missing dependency: ansible-playbook"
+                    return 1
+                fi
+                ;;
+            make)
+                if ! check_command make; then
+                    log_error "Missing dependency: make"
+                    return 1
+                fi
+                ;;
+            jq)
+                if ! check_command jq; then
+                    log_error "Missing dependency: jq"
+                    return 1
+                fi
+                ;;
+            go)
+                if ! check_command go; then
+                    log_error "Missing dependency: go"
+                    return 1
+                fi
+                ;;
         esac
     done
 
@@ -834,5 +864,360 @@ create_host_path_mapping() {
 }
 
 # ===========================================
-# 结束标记
+# 网络稳定性工具
 # ===========================================
+
+# 带重试的命令执行
+# 用法：retry_command <command> [max_retries] [delay_seconds]
+# 例如：retry_command "npm install -g openclaw" 3 10
+retry_command() {
+    local cmd="$1"
+    local max_retries="${2:-3}"
+    local delay="${3:-5}"
+    local retry_on_error="${4:-}"  # 可选：指定要重试的错误模式
+
+    for i in $(seq 1 $max_retries); do
+        log_info "Attempt $i/$max_retries: $cmd"
+
+        local output
+        local exit_code
+        output=$(eval "$cmd" 2>&1) && exit_code=0 || exit_code=$?
+
+        if [ $exit_code -eq 0 ]; then
+            log_success "Command succeeded on attempt $i"
+            return 0
+        fi
+
+        # 检查是否是可重试的错误（网络相关）
+        local is_retryable=false
+        if echo "$output" | grep -qiE "network|timeout|connection|ECONNREFUSED|ENOTFOUND|ETIMEDOUT|socket hang up|getaddrinfo|DNS"; then
+            is_retryable=true
+        fi
+        if [ -n "$retry_on_error" ] && echo "$output" | grep -qiE "$retry_on_error"; then
+            is_retryable=true
+        fi
+
+        if [ "$is_retryable" = true ] && [ $i -lt $max_retries ]; then
+            log_warning "Network error detected, retrying in ${delay}s..."
+            log_warning "Error: $(echo "$output" | tail -3)"
+            sleep $delay
+        elif [ $i -lt $max_retries ]; then
+            log_warning "Attempt $i failed, retrying in ${delay}s..."
+            sleep $delay
+        fi
+    done
+
+    log_error "All $max_retries attempts failed"
+    log_error "Last error: $(echo "$output" | tail -5)"
+    return 1
+}
+
+# 检查并使用本地 npm registry（如果可用）
+# 用法：get_npm_registry
+# 返回：优先使用本地 registry，否则使用配置的远程 registry
+get_npm_registry() {
+    # 检查本地 verdaccio 是否运行
+    if command -v curl &> /dev/null && curl -fsSL "http://localhost:4873" >/dev/null 2>&1; then
+        echo "http://localhost:4873"
+        return 0
+    fi
+
+    # 使用配置的远程 registry
+    echo "${NPM_REGISTRY:-https://registry.npmmirror.com}"
+}
+
+# 检查并使用本地 pip index（如果可用）
+# 用法：get_pip_index_url
+get_pip_index_url() {
+    # 检查本地 pypiserver 是否运行
+    if command -v curl &> /dev/null && curl -fsSL "http://localhost:8080/simple" >/dev/null 2>&1; then
+        echo "http://localhost:8080/simple"
+        return 0
+    fi
+
+    echo "${PIP_INDEX_URL:-https://mirrors.aliyun.com/pypi/simple/}"
+}
+
+# ===========================================
+# 高级网络函数
+# ===========================================
+
+# 通用 HTTP 请求（支持代理、重试）
+# 用法：http_request <method> <url> [output_file] [extra_curl_opts]
+http_request() {
+    local method="${1:-GET}"
+    local url="$2"
+    local output="$3"
+    local extra_opts="${4:-}"
+
+    local proxy="${HTTP_PROXY:-${HTTPS_PROXY:-}}"
+    local opts="-X $method -fsSL --connect-timeout 30 --max-time ${NETWORK_TIMEOUT:-120}"
+    opts="$opts --retry ${NETWORK_RETRY_COUNT:-3} --retry-delay ${NETWORK_RETRY_DELAY:-10}"
+
+    if [ -n "$proxy" ]; then
+        opts="$opts --proxy $proxy"
+    fi
+
+    if [ -n "$output" ]; then
+        opts="$opts -o $output"
+    fi
+
+    opts="$opts $extra_opts"
+
+    log_info "HTTP $method: $url"
+    curl $opts "$url"
+}
+
+# 智能下载文件（支持 GitHub 代理）
+# 用法：net_download <url> <output_path> [options]
+# 选项：--no-proxy, --no-retry, --github
+net_download() {
+    local url="$1"
+    local output="$2"
+    shift 2
+    local use_proxy=true
+    local use_retry=true
+    local force_github=false
+
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --no-proxy) use_proxy=false ;;
+            --no-retry) use_retry=false ;;
+            --github) force_github=true ;;
+        esac
+        shift
+    done
+
+    local download_url="$url"
+    if { [[ "$url" =~ github.com ]] || [ "$force_github" = true ]; } && [ -n "$GITHUB_PROXY" ]; then
+        download_url="${GITHUB_PROXY}${url}"
+        log_info "Using GitHub proxy: $GITHUB_PROXY"
+    fi
+
+    local proxy_opts=""
+    [ "$use_proxy" = true ] && [ -n "$HTTP_PROXY" ] && proxy_opts="--proxy $HTTP_PROXY"
+
+    local retry_opts=""
+    [ "$use_retry" = true ] && retry_opts="--retry ${NETWORK_RETRY_COUNT:-3} --retry-delay ${NETWORK_RETRY_DELAY:-10}"
+
+    local cmd="curl -fsSL --connect-timeout 30 --max-time ${NETWORK_TIMEOUT:-120} $retry_opts $proxy_opts '$download_url' -o '$output'"
+
+    mkdir -p "$(dirname "$output")" 2>/dev/null
+
+    if [ "$use_retry" = true ]; then
+        retry_command "$cmd"
+    else
+        eval "$cmd"
+    fi
+}
+
+# npm 安装封装
+# 用法：net_npm_install <package> [--global|-g] [--save-dev] [--save] [--no-save]
+# 默认全局安装
+net_npm_install() {
+    local pkg=""
+    local global=true  # 默认全局安装
+    local save_flag=""
+
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --global|-g) global=true ;;
+            --local) global=false ;;  # 新增：明确指定本地安装
+            --save-dev) save_flag="--save-dev" ;;
+            --save) save_flag="--save" ;;
+            --no-save) save_flag="--no-save" ;;
+            *) pkg="$1" ;;
+        esac
+        shift
+    done
+
+    [ -z "$pkg" ] && { log_error "Package name required"; return 1; }
+
+    local registry=$(get_npm_registry)
+    local global_flag=""
+    [ "$global" = true ] && global_flag="-g"
+
+    local cmd="npm install $global_flag --registry '$registry' --maxsockets 1 $save_flag '$pkg'"
+    log_info "npm install: $pkg (registry: $registry)"
+    retry_command "$cmd"
+}
+
+# pnpm 安装封装
+net_pnpm_install() {
+    local pkg=""
+    local global=false
+
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --global|-g) global=true ;;
+            *) pkg="$1" ;;
+        esac
+        shift
+    done
+
+    [ -z "$pkg" ] && { log_error "Package name required"; return 1; }
+
+    local registry="${PNPM_REGISTRY:-https://registry.npmmirror.com}"
+    local global_flag=""
+    [ "$global" = true ] && global_flag="-g"
+
+    local cmd="pnpm install $global_flag --registry '$registry' '$pkg'"
+    log_info "pnpm install: $pkg (registry: $registry)"
+    retry_command "$cmd"
+}
+
+# pip 安装封装
+# 用法：net_pip_install <package> [--no-user] [--break-system-packages]
+net_pip_install() {
+    local pkg=""
+    local user="--user"
+    local extra_args=""
+
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --no-user) user="" ;;
+            --break-system-packages) extra_args="$extra_args --break-system-packages" ;;
+            *) pkg="$1" ;;
+        esac
+        shift
+    done
+
+    [ -z "$pkg" ] && { log_error "Package name required"; return 1; }
+
+    local index_url=$(get_pip_index_url)
+    local trusted_host="${PIP_TRUSTED_HOST:-mirrors.aliyun.com}"
+
+    local cmd="pip3 install $user --index-url '$index_url' --trusted-host '$trusted_host' $extra_args '$pkg'"
+    log_info "pip install: $pkg (index: $index_url)"
+    retry_command "$cmd"
+}
+
+# go 安装封装
+net_go_install() {
+    local pkg="$1"
+    [ -z "$pkg" ] && { log_error "Package name required"; return 1; }
+
+    local proxy="${GOPROXY:-https://goproxy.cn,direct}"
+    log_info "go install: $pkg (proxy: $proxy)"
+    GOPROXY="$proxy" go install "$pkg"
+}
+
+# GitHub release 下载
+# 用法：net_github_release <owner/repo> <tag> <file_pattern> <output_dir>
+net_github_release() {
+    local repo="$1"
+    local tag="$2"
+    local pattern="$3"
+    local output_dir="${4:-/tmp}"
+
+    local api_url="https://api.github.com/repos/$repo/releases/tags/$tag"
+    [ "$tag" = "latest" ] && api_url="https://api.github.com/repos/$repo/releases/latest"
+
+    log_info "Fetching GitHub release: $repo@$tag"
+
+    local release_info
+    if [ -n "$GITHUB_PROXY" ]; then
+        release_info=$(curl -fsSL "${GITHUB_PROXY}${api_url}")
+    else
+        release_info=$(curl -fsSL "$api_url")
+    fi
+
+    [ -z "$release_info" ] && { log_error "Failed to fetch release info"; return 1; }
+
+    local download_url=$(echo "$release_info" | grep -o "\"browser_download_url\": \"[^\"]*" | grep "$pattern" | head -1 | sed 's/"browser_download_url": "//')
+
+    [ -z "$download_url" ] && { log_error "No matching file found for pattern: $pattern"; return 1; }
+
+    local filename=$(basename "$download_url")
+    local output_path="$output_dir/$filename"
+
+    log_info "Downloading: $filename"
+    net_download "$download_url" "$output_path" --github
+
+    echo "$output_path"
+}
+
+# GitHub 仓库克隆
+# 用法：net_git_clone <repo_url> <target_dir> [--depth 1]
+net_git_clone() {
+    local url="$1"
+    local target="$2"
+    shift 2
+    local depth=""
+
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --depth) depth="--depth $2"; shift ;;
+        esac
+        shift
+    done
+
+    local clone_url="$url"
+    if [[ "$url" =~ github.com ]] && [ -n "$GITHUB_PROXY" ]; then
+        clone_url="${GITHUB_PROXY}${url}"
+        log_info "Using GitHub proxy for clone"
+    fi
+
+    log_info "git clone: $url"
+    git clone $depth "$clone_url" "$target"
+}
+
+# 网络连接检查
+net_check_connection() {
+    local test_urls=("https://registry.npmmirror.com" "https://mirrors.aliyun.com" "https://github.com")
+
+    log_info "Checking network connectivity..."
+
+    for url in "${test_urls[@]}"; do
+        if curl -fsSL --connect-timeout 5 "$url" >/dev/null 2>&1; then
+            log_success "Connected: $url"
+        else
+            log_warning "Failed: $url"
+        fi
+    done
+}
+
+# 显示网络配置
+net_show_config() {
+    echo -e "\n${CYAN}Network Configuration:${NC}"
+    echo "  NPM Registry:  $(get_npm_registry)"
+    echo "  PIP Index:     $(get_pip_index_url)"
+    echo "  Go Proxy:      ${GOPROXY:-default}"
+    [ -n "$GITHUB_PROXY" ] && echo "  GitHub Proxy:  $GITHUB_PROXY"
+    [ -n "$HTTP_PROXY" ] && echo "  HTTP Proxy:    $HTTP_PROXY"
+    [ -n "$HTTPS_PROXY" ] && echo "  HTTPS Proxy:   $HTTPS_PROXY"
+    echo ""
+}
+
+# ===========================================
+# Ansible 依赖支持
+# ===========================================
+
+# 检查 ansible 依赖
+check_ansible() {
+    if ! check_command ansible; then
+        log_error "Missing dependency: ansible"
+        return 1
+    fi
+    if ! check_command ansible-playbook; then
+        log_error "Missing dependency: ansible-playbook"
+        return 1
+    fi
+    log_success "Ansible $(ansible --version | head -1) found"
+    return 0
+}
+
+# 运行 ansible playbook（带重试）
+# 用法：net_ansible_playbook <playbook_path> [extra_vars]
+net_ansible_playbook() {
+    local playbook="$1"
+    local extra_vars="${2:-}"
+
+    local cmd="ansible-playbook '$playbook'"
+    if [ -n "$extra_vars" ]; then
+        cmd="$cmd -e '$extra_vars'"
+    fi
+
+    log_info "Running ansible playbook: $playbook"
+    retry_command "$cmd" 2 10
+}

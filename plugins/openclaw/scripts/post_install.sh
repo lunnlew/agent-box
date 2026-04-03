@@ -16,6 +16,7 @@ OPENCLAW_PORT="${OPENCLAW_PORT:-18789}"
 mkdir -p ~/.openclaw/devices
 rm -rf ~/.openclaw/extensions/lossless-claw 2>/dev/null || true
 if command -v openclaw &> /dev/null; then
+  log_info "Installing lossless-claw plugin..."
   openclaw plugins install @martian-engineering/lossless-claw || true
 fi
 

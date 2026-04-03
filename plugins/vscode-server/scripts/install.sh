@@ -20,17 +20,22 @@ rm -f ~/.code-server/bin/code-server 2>/dev/null || true
 # 创建必要目录
 mkdir -p ~/.code-server/lib ~/.code-server/bin ~/.cache/code-server
 
-# 执行安装脚本（支持代理）
+# 执行安装脚本（使用智能下载）
 log_info "Downloading and running install script..."
 
 TEMP_SCRIPT=$(mktemp)
 
-if [ -n "$INSTALL_PROXY" ]; then
-  curl -fsSLk --connect-timeout 30 --max-time 600 --retry 3 --proxy "$INSTALL_PROXY" https://code-server.dev/install.sh -o "$TEMP_SCRIPT"
-elif [ -n "$HTTPS_PROXY" ]; then
-  curl -fsSLk --connect-timeout 30 --max-time 600 --retry 3 --proxy "$HTTPS_PROXY" https://code-server.dev/install.sh -o "$TEMP_SCRIPT"
+if type net_download &>/dev/null; then
+  net_download "https://code-server.dev/install.sh" "$TEMP_SCRIPT" --no-retry
 else
-  curl -fsSLk --connect-timeout 30 --max-time 600 --retry 3 https://code-server.dev/install.sh -o "$TEMP_SCRIPT"
+  # 回退到原有逻辑
+  if [ -n "$INSTALL_PROXY" ]; then
+    curl -fsSLk --connect-timeout 30 --max-time 600 --retry 3 --proxy "$INSTALL_PROXY" https://code-server.dev/install.sh -o "$TEMP_SCRIPT"
+  elif [ -n "$HTTPS_PROXY" ]; then
+    curl -fsSLk --connect-timeout 30 --max-time 600 --retry 3 --proxy "$HTTPS_PROXY" https://code-server.dev/install.sh -o "$TEMP_SCRIPT"
+  else
+    curl -fsSLk --connect-timeout 30 --max-time 600 --retry 3 https://code-server.dev/install.sh -o "$TEMP_SCRIPT"
+  fi
 fi
 
 if [ ! -s "$TEMP_SCRIPT" ]; then

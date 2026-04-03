@@ -45,12 +45,17 @@ if [ -L "$OPENCLAW_BIN" ]; then
   log_info "  Removed symlink: $OPENCLAW_BIN"
 fi
 
-# 全局安装
+# 全局安装（使用智能安装函数）
 log_info "Installing openclaw@latest..."
-if ! npm install -g openclaw@latest; then
-  log_warning "npm install failed, retrying..."
-  sleep 2
-  npm install -g openclaw@latest
+if type net_npm_install &>/dev/null; then
+  net_npm_install "openclaw@latest"
+else
+  # 回退到原有逻辑
+  if ! npm install -g openclaw@latest; then
+    log_warning "npm install failed, retrying..."
+    sleep 2
+    npm install -g openclaw@latest
+  fi
 fi
 
 # 验证安装完整性

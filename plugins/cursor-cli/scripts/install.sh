@@ -22,14 +22,20 @@ if [ -d ~/.cursor ]; then
   mv ~/.cursor ~/.cursor.bak.$(date +%Y%m%d%H%M%S) 2>/dev/null || true
 fi
 
-# 执行安装脚本（支持代理）
+# 执行安装脚本（使用智能下载）
 log_info "Downloading and running install script..."
-if [ -n "$INSTALL_PROXY" ]; then
-  curl -fsSL --proxy "$INSTALL_PROXY" https://cursor.com/install | bash
-elif [ -n "$HTTPS_PROXY" ]; then
-  curl -fsSL --proxy "$HTTPS_PROXY" https://cursor.com/install | bash
+if type net_download &>/dev/null; then
+  net_download "https://cursor.com/install" "/tmp/cursor-install.sh" --no-retry
+  bash /tmp/cursor-install.sh
 else
-  curl -fsSL https://cursor.com/install | bash
+  # 回退到原有逻辑
+  if [ -n "$INSTALL_PROXY" ]; then
+    curl -fsSL --proxy "$INSTALL_PROXY" https://cursor.com/install | bash
+  elif [ -n "$HTTPS_PROXY" ]; then
+    curl -fsSL --proxy "$HTTPS_PROXY" https://cursor.com/install | bash
+  else
+    curl -fsSL https://cursor.com/install | bash
+  fi
 fi
 
 # 验证安装

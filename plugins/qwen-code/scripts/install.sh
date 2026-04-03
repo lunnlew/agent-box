@@ -31,12 +31,16 @@ for tmp_dir in "$NPM_ROOT"/.qwen-code-*; do
   [ -d "$tmp_dir" ] && rm -rf "$tmp_dir" 2>/dev/null || true
 done
 
-# 安装
+# 安装（使用智能安装）
 log_info "Installing package..."
-if ! npm install -g "$PKG_NAME"; then
-  log_warning "First attempt failed, retrying..."
-  sleep 2
-  npm install -g "$PKG_NAME"
+if type net_npm_install &>/dev/null; then
+  net_npm_install "$PKG_NAME"
+else
+  if ! npm install -g "$PKG_NAME"; then
+    log_warning "First attempt failed, retrying..."
+    sleep 2
+    npm install -g "$PKG_NAME"
+  fi
 fi
 
 # 创建符号链接（如果需要）

@@ -192,7 +192,7 @@ RUN mkdir -p tools plugins logs .npm .pip supervisor .cache/uv && \
 
 # 复制脚本文件
 COPY scripts/ /opt/
-RUN chmod +x /opt/*.sh
+RUN chmod +x /opt/*.sh /opt/*.bash 2>/dev/null || true
 
 # 创建 CLI 软链接
 RUN ln -s /opt/plugin-manager.sh /usr/local/bin/agentbox

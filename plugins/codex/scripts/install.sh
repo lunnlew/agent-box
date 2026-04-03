@@ -32,12 +32,16 @@ for tmp_dir in "$NPM_ROOT"/.codex-*; do
   [ -d "$tmp_dir" ] && rm -rf "$tmp_dir" 2>/dev/null || true
 done
 
-# 安装
+# 安装（使用智能安装）
 log_info "Installing package..."
-if ! npm install -g "$PKG_NAME@$CODEX_VERSION"; then
-  log_warning "First attempt failed, retrying..."
-  sleep 2
-  npm install -g "$PKG_NAME@$CODEX_VERSION"
+if type net_npm_install &>/dev/null; then
+  net_npm_install "$PKG_NAME@$CODEX_VERSION"
+else
+  if ! npm install -g "$PKG_NAME@$CODEX_VERSION"; then
+    log_warning "First attempt failed, retrying..."
+    sleep 2
+    npm install -g "$PKG_NAME@$CODEX_VERSION"
+  fi
 fi
 
 # 验证安装

@@ -17,14 +17,21 @@ if [ -f ~/.local/bin/claude ]; then
   rm -f ~/.local/bin/claude 2>/dev/null || true
 fi
 
-# 执行安装脚本（支持代理）
+# 执行安装脚本（使用智能下载）
 log_info "Downloading and running install script..."
-if [ -n "$INSTALL_PROXY" ]; then
-  curl -fsSL --proxy "$INSTALL_PROXY" https://claude.ai/install.sh | bash
-elif [ -n "$HTTPS_PROXY" ]; then
-  curl -fsSL --proxy "$HTTPS_PROXY" https://claude.ai/install.sh | bash
+if type net_download &>/dev/null; then
+  # 使用智能下载获取安装脚本
+  net_download "https://claude.ai/install.sh" "/tmp/claude-install.sh" --no-retry
+  bash /tmp/claude-install.sh
 else
-  curl -fsSL https://claude.ai/install.sh | bash
+  # 回退到原有逻辑
+  if [ -n "$INSTALL_PROXY" ]; then
+    curl -fsSL --proxy "$INSTALL_PROXY" https://claude.ai/install.sh | bash
+  elif [ -n "$HTTPS_PROXY" ]; then
+    curl -fsSL --proxy "$HTTPS_PROXY" https://claude.ai/install.sh | bash
+  else
+    curl -fsSL https://claude.ai/install.sh | bash
+  fi
 fi
 
 # 验证安装

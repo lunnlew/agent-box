@@ -94,3 +94,7 @@ plugins:
   # OpenSpace - AI Agent 自我进化引擎（技能自动学习、云社区、Dashboard）
   - name: openspace
     enabled: true
+
+  # Verdaccio - 私有 NPM Registry（离线缓存、加速下载）
+  - name: verdaccio
+    enabled: true

@@ -1,0 +1,53 @@
+# Verdaccio 插件定义
+name: verdaccio
+version: "1.0.0"
+description: 轻量级私有 npm 代理 registry，支持离线缓存和加速下载
+
+# 依赖要求
+requires:
+  - nodejs >= 18
+  - npm
+
+# 安装命令
+install:
+  - bash ~/plugins-config/verdaccio/scripts/install.sh
+
+# 环境变量配置
+env:
+  VERDACCIO_PORT: export VERDACCIO_PORT=${VERDACCIO_PORT:-4873}
+  VERDACCIO_STORAGE: export VERDACCIO_STORAGE=${VERDACCIO_STORAGE:-~/.verdaccio/storage}
+  PATH_APPEND: ~/tools/bin
+
+# 需要持久化的目录
+volumes:
+  - ~/.verdaccio
+
+# 服务配置
+service:
+  daemon: true
+  auto_start: true
+  restart: true
+  max_restarts: 5
+  command: bash ~/plugins-config/verdaccio/scripts/start.sh
+
+# 健康检查
+healthcheck:
+  command: curl -fsSL http://localhost:4873 >/dev/null 2>&1
+
+# 安装后配置
+post_install:
+  - bash ~/plugins-config/verdaccio/scripts/post_install.sh
+
+# 卸载命令
+uninstall:
+  - bash ~/plugins-config/verdaccio/scripts/uninstall.sh
+
+# 更新命令
+update:
+  - bash ~/plugins-config/verdaccio/scripts/update.sh
+
+# 标签
+tags:
+  - infrastructure
+  - cache
+  - npm
