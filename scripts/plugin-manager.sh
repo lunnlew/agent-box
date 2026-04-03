@@ -520,6 +520,7 @@ install_plugin() {
 }
 
 # 执行 post_install 命令
+# 注意：get_yaml_list_commands 已经返回处理后的纯命令内容，直接执行即可
 execute_post_install_commands() {
     local plugin_file="$1"
     local plugin_name="$2"
@@ -532,54 +533,18 @@ execute_post_install_commands() {
 
     log_info "Running post-install commands..."
 
-    local current_cmd=""
-    local in_multiline=false
-
-    while IFS= read -r line; do
-        # 检查是否是新的列表项（以 - 开头）
-        if [[ "$line" =~ ^-[[:space:]] ]]; then
-            # 如果之前有累积的命令，执行它
-            if [ -n "$current_cmd" ]; then
-                execute_post_install_single_command "$current_cmd"
-            fi
-            # 开始新的命令
-            local item_content=$(echo "$line" | sed 's/^[[:space:]]*-[[:space:]]*//')
-            if [[ "$item_content" == "|" ]] || [[ "$item_content" == "|-" ]] || [[ "$item_content" == "|+" ]]; then
-                in_multiline=true
-                current_cmd=""
-            else
-                in_multiline=false
-                current_cmd="$item_content"
-            fi
-        elif [ "$in_multiline" = true ] || [ -n "$current_cmd" ]; then
-            # 多行块内容或续行
-            if [ -z "$current_cmd" ]; then
-                current_cmd="$line"
-            else
-                current_cmd="${current_cmd}"$'\n'"$line"
-            fi
+    # 直接执行每个命令（get_yaml_list_commands 已经处理过 YAML 格式）
+    while IFS= read -r cmd; do
+        # 跳过空行和注释
+        if [ -z "$cmd" ] || [[ "$cmd" =~ ^[[:space:]]*# ]]; then
+            continue
         fi
+
+        log_info "  Executing: $cmd"
+        eval "$cmd" || log_warning "Post-install command failed: $cmd"
     done <<< "$commands"
 
-    # 执行最后一个命令
-    if [ -n "$current_cmd" ]; then
-        execute_post_install_single_command "$current_cmd"
-    fi
-
     return 0
-}
-
-# 执行单个 post_install 命令
-execute_post_install_single_command() {
-    local cmd="$1"
-
-    # 跳过注释
-    if [[ "$cmd" =~ ^[[:space:]]*# ]]; then
-        return 0
-    fi
-
-    log_info "  $(echo "$cmd" | head -1)"
-    eval "$cmd"
 }
 
 # 卸载插件

@@ -24,17 +24,10 @@ if [ ! -f ~/.openclaw/openclaw.json ]; then
   log_info "Initializing OpenClaw configuration..."
   # 创建最小配置
   mkdir -p ~/.openclaw
-  cat > ~/.openclaw/openclaw.json << 'CONFIGEOF'
-{
-  "gateway": {
-    "mode": "local"
-  },
-  "auth": {
-    "mode": "token",
-    "token": "${OPENCLAW_GATEWAY_TOKEN}"
-  }
-}
-CONFIGEOF
+  openclaw setup --no-interactive --mode local
+  openclaw config set gateway.mode local
+  openclaw config set auth.mode token
+  openclaw config set auth.token "${OPENCLAW_GATEWAY_TOKEN}"
   log_success "Configuration created with gateway.mode=local"
 fi
 
