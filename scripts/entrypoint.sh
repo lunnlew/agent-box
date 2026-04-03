@@ -235,11 +235,15 @@ start_services() {
 # Root 阶段
 main_root() {
     show_banner
-    init_environment
 
     fix_docker_socket
 
     if [ "$(id -u)" = "0" ]; then
+        # 修复挂载卷权限（root 阶段才能执行）
+        log_info "Fixing volume permissions..."
+        chown -R agent:agent "$HOME" 2>/dev/null || true
+        chmod -R 755 "$HOME" 2>/dev/null || true
+
         log_info "Switching to agent user..."
         exec gosu agent "$0" --agent "$@"
     fi
@@ -247,6 +251,9 @@ main_root() {
 
 # Agent 阶段
 main_agent() {
+    # 初始化环境（以 agent 用户身份创建目录）
+    init_environment
+
     # 检查数据目录权限
     check_data_permissions || log_warning "Permission check failed, some operations may fail"
 
