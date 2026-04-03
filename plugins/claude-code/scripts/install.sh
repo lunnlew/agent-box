@@ -45,3 +45,5 @@ chown -R agent:agent ~/.claude 2>/dev/null || true
 
 claude --version
 log_success "Claude Code installed successfully"
+
+echo "alias claude='IS_SANDBOX=1 claude'" >> ~/.bashrc
