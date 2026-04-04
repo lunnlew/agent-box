@@ -44,9 +44,6 @@ services:
       # 共享目录（主机-容器文件交换）
       - ./host-share:/host-share
 
-      - E:/npm-cache:/home/agent/.npm:rw
-      - E:/pip:/home/agent/.pip:rw
-
     extra_hosts:
       - "host.docker.internal:host-gateway"
     ports:
@@ -72,10 +69,15 @@ services:
       - "${OPENSPACE_PORT:-7788}:7788"
       # OpenSpace Dashboard Frontend (容器内 5174)
       - "${OPENSPACE_FRONTEND_PORT:-5174}:5174"
+      # Verdaccio - 私有 NPM Registry (容器内 4873)
+      - "${VERDACCIO_PORT:-4873}:4873"
 
     # Docker socket 权限
     group_add:
       - "999"
+    # 网络管理能力（用于透明代理 iptables 规则）
+    cap_add:
+      - NET_ADMIN
     # 保持容器持续运行
     tty: true
     stdin_open: true

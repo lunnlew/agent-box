@@ -48,6 +48,7 @@ uninstall:
 update:
   - bash ~/plugins-config/clawpanel/scripts/update.sh
 
+
 # 标签
 tags:
   - web

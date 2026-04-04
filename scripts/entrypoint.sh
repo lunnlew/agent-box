@@ -250,6 +250,22 @@ main_root() {
         log_info "Creating host path mapping for Docker-in-Docker..."
         create_host_path_mapping agentbox /home/agent || log_warning "Host path mapping failed, some plugins may fail"
 
+        # 配置透明代理（需要 root 权限执行 iptables）
+        # 透明代理必须在 root 阶段启动，因为 iptables 需要 NET_ADMIN 权限
+        if [ "$TRANSPARENT_PROXY_ENABLED" = "true" ]; then
+            log_info "Setting up transparent proxy (requires root)..."
+
+            # 导入透明代理配置
+            if [ -f "$SCRIPT_DIR/transparent-proxy.sh" ]; then
+                source "$SCRIPT_DIR/transparent-proxy.sh"
+            elif [ -f /opt/transparent-proxy.sh ]; then
+                source /opt/transparent-proxy.sh
+            fi
+
+            # 启动透明代理
+            setup_transparent_proxy || log_warning "Transparent proxy setup failed"
+        fi
+
         log_info "Switching to agent user..."
         exec gosu agent "$0" --agent "$@"
     fi
@@ -262,6 +278,12 @@ main_agent() {
 
     # 检查数据目录权限
     check_data_permissions || log_warning "Permission check failed, some operations may fail"
+
+    # 配置透明代理（在 root 阶段执行，需要 NET_ADMIN 权限）
+    # 注意：透明代理需要在 root 阶段配置 iptables
+    if [ "$TRANSPARENT_PROXY_ENABLED" = "true" ]; then
+        log_info "Transparent proxy configured in previous stage"
+    fi
 
     # 修复 Docker 配置目录权限（重要！）
     # 防止 root 阶段创建的文件导致 agent 用户权限问题

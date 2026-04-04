@@ -224,6 +224,20 @@ Mirror configuration:
 - `GOPROXY` - Go module proxy
 - `GITHUB_PROXY` - GitHub proxy
 
+Transparent proxy (for network acceleration):
+
+- `TRANSPARENT_PROXY_ENABLED` - Enable transparent proxy (default: false)
+- `TRANSPARENT_PROXY_ADDR` - Proxy server address (default: 127.0.0.1:1080)
+- `TRANSPARENT_PROXY_PORTS` - Ports to intercept (default: 80,443)
+
+The transparent proxy uses redsocks + iptables to automatically redirect TCP traffic
+through a SOCKS5/HTTP proxy. This is useful for:
+- Intercepting traffic from third-party tools that don't support proxy settings
+- Bypassing network restrictions in restricted environments
+- Accelerating downloads from slow/blocked sources
+
+Note: Requires `NET_ADMIN` capability (already configured in docker-compose.yml).
+
 ## Troubleshooting
 
 ### Plugin Installation Failed

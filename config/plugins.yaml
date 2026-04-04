@@ -97,4 +97,4 @@ plugins:
 
   # Verdaccio - 私有 NPM Registry（离线缓存、加速下载）
   - name: verdaccio
-    enabled: true
+    enabled: false

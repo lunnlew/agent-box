@@ -75,6 +75,8 @@ RUN apt-get update && apt-get install -y \
     # 已安装：curl, wget, git, gnupg, ca-certificates
     # 基础工具
     sudo \
+    iptables \
+    redsocks \
     # Python 环境 (Ubuntu 24.04 默认 Python 3.12)
     python3 \
     python3-pip \

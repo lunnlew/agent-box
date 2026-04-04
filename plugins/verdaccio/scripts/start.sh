@@ -12,30 +12,45 @@ if [ ! -f "$CONFIG_FILE" ]; then
     log_warning "Verdaccio config not found, creating default..."
     mkdir -p "$HOME/.verdaccio"
     cat > "$CONFIG_FILE" << 'EOF'
-storage: ~/.verdaccio/storage
-plugins: ~/.verdaccio/plugins
+storage: storage
+plugins: plugins
 
 web:
   title: AgentBox NPM Registry
 
 auth:
   htpasswd:
-    file: ~/.verdaccio/htpasswd
-
+    file: htpasswd
+    
 uplinks:
-  npmjs:
+  npmmirror:
     url: https://registry.npmmirror.com
     cache: true
+    timeout: 60s
+    maxage: 30d
+  yarn:
+    url: https://registry.yarnpkg.com
+    cache: true
+  cnpmjs:
+    url: https://registry.npmjs.org
+    cache: true
+    timeout: 60s
+    maxage: 30d
+  npmjs:
+    url: https://registry.npmjs.org
+    cache: true
+    timeout: 60s
+    maxage: 30d
 
 packages:
   '@*/*':
     access: $all
     publish: $authenticated
-    proxy: npmjs
+    proxy: npmmirror
   '**':
     access: $all
     publish: $authenticated
-    proxy: npmjs
+    proxy: npmmirror
 
 logs:
   - { type: stdout, format: pretty, level: warn }

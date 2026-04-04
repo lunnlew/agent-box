@@ -23,7 +23,7 @@ log_info "Installing verdaccio package..."
 if type net_npm_install &>/dev/null; then
     net_npm_install verdaccio
 else
-    npm install -g verdaccio --registry "${NPM_REGISTRY:-https://registry.npmmirror.com}" --maxsockets 1
+    npm install -g verdaccio --registry https://registry.npmmirror.com --maxsockets 1
 fi
 
 # 检查安装
@@ -43,8 +43,8 @@ if [ ! -f "$CONFIG_FILE" ]; then
 # Verdaccio Configuration for AgentBox
 # 私有 NPM Registry 配置
 
-storage: ~/.verdaccio/storage
-plugins: ~/.verdaccio/plugins
+storage: storage
+plugins: plugins
 
 web:
   title: AgentBox NPM Registry
@@ -53,12 +53,12 @@ web:
 
 auth:
   htpasswd:
-    file: ~/.verdaccio/htpasswd
+    file: htpasswd
     max_users: 100
 
 # 上游代理配置（支持离线缓存）
 uplinks:
-  npmjs:
+  npmmirror:
     url: https://registry.npmmirror.com
     cache: true
     timeout: 60s
@@ -66,6 +66,16 @@ uplinks:
   yarn:
     url: https://registry.yarnpkg.com
     cache: true
+  cnpmjs:
+    url: https://registry.npmjs.org
+    cache: true
+    timeout: 60s
+    maxage: 30d
+  npmjs:
+    url: https://registry.npmjs.org
+    cache: true
+    timeout: 60s
+    maxage: 30d
 
 # 包访问权限
 packages:
@@ -73,13 +83,13 @@ packages:
     access: $all
     publish: $authenticated
     unpublish: $authenticated
-    proxy: npmjs
+    proxy: npmmirror
 
   '**':
     access: $all
     publish: $authenticated
     unpublish: $authenticated
-    proxy: npmjs
+    proxy: npmmirror
 
 # 日志配置
 logs:

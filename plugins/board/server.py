@@ -256,6 +256,18 @@ SERVICES = {
         'color': 'purple',
         'category': 'ai',
         'check_host': '127.0.0.1'
+    },
+    'verdaccio': {
+        'internal_port': 4873,
+        'external_port': int(os.environ.get('VERDACCIO_PORT', 4873)),
+        'name': 'Verdaccio',
+        'icon': '📦',
+        'desc': '轻量级私有 NPM 代理仓库 - 缓存加速 npm 包下载',
+        'path': '',
+        'color': 'green',
+        'badge': 'new',
+        'category': 'tools',
+        'check_host': '127.0.0.1'
     }
 }
 
